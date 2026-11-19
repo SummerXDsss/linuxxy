@@ -60,8 +60,9 @@ Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
 the popup is open. General, Storage, and Appearance pages cover the opening
 shortcut, default paste action, text/image/file capture, history limit, clipboard
 check interval, history sorting (last copied, first copied, or most copied),
-search mode (exact, fuzzy, regex, or mixed), pinned item position, popup
-position, automatic preview and its delay, footer visibility, clear-on-quit
+search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
+underline, or color), pinned item position, popup position, automatic preview
+and its delay, footer visibility, clear-on-quit
 behavior, and launch at login. Preferences are saved in
 `$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.
@@ -94,5 +95,7 @@ and file copying between separate X11 applications, checks content after exit
 when a clipboard manager is present, and restores the clipboard afterward.
 The [history test](tests/history_behavior.py) verifies migration of older data,
 copy counts, sorting, and pin order.
+The [search test](tests/search_behavior.py) verifies matching modes, fuzzy
+ranking, and snippets that keep later matches visible.
 The [install test](tests/install_smoke.py) checks a temporary user installation,
 app-menu entry, launch, uninstall, and preservation of history.

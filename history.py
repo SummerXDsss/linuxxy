@@ -2,10 +2,10 @@
 
 import sqlite3
 import time
-import re
 import hashlib
 from pathlib import Path
 from urllib.parse import urlparse, unquote
+from search import match
 
 PIN_KEYS = "bcdefghijklmnorstuxy"
 
@@ -82,7 +82,11 @@ class History:
                 "INSERT INTO entries(text, copied_at, first_copied_at, copy_count, kind, data) "
                 "VALUES (?, ?, ?, 1, ?, ?) "
                 "ON CONFLICT(text) DO UPDATE SET copied_at=excluded.copied_at, "
-                "copy_count=entries.copy_count+1, kind=excluded.kind, data=excluded.data",
+                "copy_count=entries.copy_count+1, "
+                "kind=CASE WHEN excluded.kind='text' AND entries.kind!='text' "
+                "THEN entries.kind ELSE excluded.kind END, "
+                "data=CASE WHEN excluded.kind='text' AND entries.kind!='text' "
+                "THEN entries.data ELSE excluded.data END",
                 (value, now, now, kind, data),
             )
             self._prune()
@@ -107,35 +111,23 @@ class History:
             "pin_order, copied_at, pin_key FROM entries "
             "ORDER BY copied_at DESC, id DESC"
         ).fetchall()
-        if query:
-            needle = query.casefold()
-            def exact(row):
-                return needle in row[1].casefold()
-            def fuzzy(row):
-                letters = iter(row[1].casefold())
-                return all(any(char == found for found in letters) for char in needle)
-            def regex(row):
-                try:
-                    return re.search(query, row[1], re.IGNORECASE) is not None
-                except re.error:
-                    return False
-            tests = {"exact": exact, "fuzzy": fuzzy, "regex": regex}
-            if mode == "mixed":
-                for test in (exact, regex, fuzzy):
-                    matching = [row for row in rows if test(row)]
-                    if matching:
-                        rows = matching
-                        break
-                else:
-                    rows = []
-            else:
-                rows = [row for row in rows if tests.get(mode, exact)(row)]
+        candidates = ("exact", "regex", "fuzzy") if mode == "mixed" else (mode,)
+        matches = []
+        effective_mode = candidates[-1]
+        for candidate in candidates:
+            matches = [(row, result) for row in rows
+                       if (result := match(row[1], query, candidate)) is not None]
+            effective_mode = candidate
+            if matches or mode != "mixed":
+                break
         metric = {"first_copied": 5, "most_copied": 6}.get(sort_by, 8)
-        def order(row):
+        def order(item):
+            row, result = item
             if row[2]:
-                return (1 if pins_position == "bottom" else 0, row[7] or row[0], 0)
-            return (0 if pins_position == "bottom" else 1, -row[metric], -row[0])
-        return [row[:5] + (row[9],) for row in sorted(rows, key=order)]
+                return (1 if pins_position == "bottom" else 0, row[7] or row[0], 0, 0)
+            score = result[0] if query and effective_mode == "fuzzy" else 0
+            return (0 if pins_position == "bottom" else 1, score, -row[metric], -row[0])
+        return [row[:5] + (row[9], result[1]) for row, result in sorted(matches, key=order)]
 
     def pin(self, entry_id: int, pinned: bool):
         with self.db:

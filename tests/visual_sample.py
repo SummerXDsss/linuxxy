@@ -52,6 +52,7 @@ with tempfile.TemporaryDirectory() as directory:
             shot(app.window, 'popup.png')
             app.rows.select_row(app.rows.get_children()[1])
             assert app.preview is None
+            app.settings.set('preview_delay_ms', 1500, save=False)
             app.show_settings()
         except Exception:
             app.quit()

@@ -22,6 +22,11 @@ with tempfile.TemporaryDirectory() as directory:
     try:
         history.add('old')
         history.add('third')
+        history.add_rich('formatted', b'<b>formatted</b>')
+        history.add('formatted')
+        rich_row = next(row for row in history.list() if row[1] == 'formatted')
+        assert rich_row[3:5] == ('rich', b'<b>formatted</b>')
+        history.delete(rich_row[0])
         metadata = history.db.execute(
             'SELECT first_copied_at, copy_count FROM entries WHERE text="old"'
         ).fetchone()

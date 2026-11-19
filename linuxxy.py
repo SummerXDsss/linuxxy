@@ -20,6 +20,7 @@ from autostart import set_enabled as set_autostart
 from settings import Settings
 from x11 import X11
 from x11_clipboard import X11Clipboard
+from search import snippet
 
 
 class App:
@@ -175,7 +176,7 @@ class App:
         previous_pin = None
         row_count = 0
         image_count = 0
-        for index, (entry_id, value, pinned, kind, data, pin_key) in enumerate(self.history.list(
+        for index, (entry_id, value, pinned, kind, data, pin_key, matches) in enumerate(self.history.list(
             self.search.get_text(), self.settings.get("search_mode"),
             self.settings.get("pins_position"), self.settings.get("sort_by")
         )):
@@ -198,14 +199,29 @@ class App:
                                                 max(1, int(pixbuf.get_height() * scale)),
                                                 GdkPixbuf.InterpType.BILINEAR)
                 visual = Gtk.Image.new_from_pixbuf(thumbnail)
-                preview = "Image"
+                preview, visible_matches = snippet("Image", matches)
                 image_count += 1
             else:
                 visual = None
-                preview = " ".join(value.split())[:160]
-                if kind == "files":
-                    preview = preview.rsplit(" ", 1)[0]
+                title = value.rsplit(" ", 1)[0] if kind == "files" else value
+                preview, visible_matches = snippet(title, matches)
             label = Gtk.Label(label=preview, xalign=0)
+            if visible_matches:
+                tags = {
+                    "bold": ("<b>", "</b>"),
+                    "italic": ("<i>", "</i>"),
+                    "underline": ("<u>", "</u>"),
+                    "color": ('<span background="#e9c46a" foreground="#202020">', '</span>'),
+                }
+                opening, closing = tags[self.settings.get("highlight_match")]
+                parts = []
+                cursor = 0
+                for left, right in visible_matches:
+                    parts.append(GLib.markup_escape_text(preview[cursor:left]))
+                    parts.append(opening + GLib.markup_escape_text(preview[left:right]) + closing)
+                    cursor = right
+                parts.append(GLib.markup_escape_text(preview[cursor:]))
+                label.set_markup("".join(parts))
             label.set_ellipsize(3)
             label.set_margin_top(4)
             label.set_margin_bottom(4)
@@ -579,6 +595,12 @@ class App:
         preview_delay.set_sensitive(auto_preview.get_active())
         auto_preview.connect("toggled", lambda button: preview_delay.set_sensitive(button.get_active()))
         field(grids["Appearance"], 4, "Preview delay (ms)", preview_delay)
+        highlight_match = Gtk.ComboBoxText()
+        for key, name in (("bold", "Bold"), ("italic", "Italic"),
+                          ("underline", "Underline"), ("color", "Color")):
+            highlight_match.append(key, name)
+        highlight_match.set_active_id(self.settings.get("highlight_match"))
+        field(grids["Appearance"], 5, "Highlight matches", highlight_match)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -625,6 +647,7 @@ class App:
                 ("show_footer", show_footer.get_active()),
                 ("open_preview_automatically", auto_preview.get_active()),
                 ("preview_delay_ms", preview_delay.get_value_as_int()),
+                ("highlight_match", highlight_match.get_active_id()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),
             ):

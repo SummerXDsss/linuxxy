@@ -17,6 +17,7 @@ DEFAULTS = {
     "sort_by": "last_copied",
     "open_preview_automatically": True,
     "preview_delay_ms": 1500,
+    "highlight_match": "bold",
     "pins_position": "top",
     "save_text": True,
     "save_images": True,
@@ -57,6 +58,9 @@ class Settings:
         elif key == "sort_by":
             if value not in ("last_copied", "first_copied", "most_copied"):
                 raise ValueError("Invalid sort order")
+        elif key == "highlight_match":
+            if value not in ("bold", "italic", "underline", "color"):
+                raise ValueError("Invalid highlight style")
         elif key == "pins_position":
             if value not in ("top", "bottom"):
                 raise ValueError("Invalid pins position")
