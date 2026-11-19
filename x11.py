@@ -58,6 +58,22 @@ class X11:
                 self.on_shortcut(event.time)
         return True
 
+    def modifiers_down(self):
+        """Check physical modifier keys even after the popup takes focus."""
+        keymap = self.display.query_keymap()
+        groups = (
+            ("Shift_L", "Shift_R"),
+            ("Control_L", "Control_R"),
+            ("Alt_L", "Alt_R"),
+            ("Super_L", "Super_R"),
+        )
+        for names in groups:
+            for name in names:
+                code = self.display.keysym_to_keycode(XK.string_to_keysym(name))
+                if code and keymap[code // 8] & (1 << (code % 8)):
+                    return True
+        return False
+
     def active_window(self):
         atom = self.display.intern_atom("_NET_ACTIVE_WINDOW")
         prop = self.root.get_full_property(atom, Xatom.WINDOW)

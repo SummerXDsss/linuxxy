@@ -47,6 +47,8 @@ class App:
         self.paste_stack = []
         self.paste_keys = None
         self.paste_advance_id = None
+        self.shortcut_phase = "toggle"
+        self.shortcut_poll_id = None
         self.application_info = None
 
         self.window = Gtk.Window(title="Linuxxy")
@@ -130,7 +132,7 @@ class App:
             except (RuntimeError, OSError) as error:
                 print(f"Clipboard formats unavailable: {error}")
             try:
-                self.x11 = X11(self.toggle_window, self.settings.get("shortcut"))
+                self.x11 = X11(self.shortcut_pressed, self.settings.get("shortcut"))
             except (RuntimeError, OSError, ValueError) as error:
                 print(f"Global shortcut unavailable: {error}")
         self.capture()
@@ -472,6 +474,8 @@ class App:
         if paste is None:
             paste = self.settings.get("paste_by_default")
         self.copy_entry(row, self.settings.get("remove_formatting_by_default") != plain)
+        self.reset_shortcut_cycle()
+        self.remember_popup_position()
         self.window.hide()
         self.search.set_text("")
         self.multi_selection.clear()
@@ -812,13 +816,54 @@ class App:
         return False
 
     def hide_window(self, *_):
+        self.reset_shortcut_cycle()
         self.cancel_preview()
-        if self.window.get_visible():
-            x, y = self.window.get_position()
-            self.settings.set("popup_last_position", [x, y])
+        self.remember_popup_position()
         self.window.hide()
         self.search.set_text("")
         return True
+
+    def remember_popup_position(self):
+        if self.window.get_visible():
+            self.settings.set("popup_last_position", list(self.window.get_position()))
+
+    def reset_shortcut_cycle(self):
+        self.shortcut_phase = "toggle"
+        if self.shortcut_poll_id is not None:
+            GLib.source_remove(self.shortcut_poll_id)
+            self.shortcut_poll_id = None
+
+    def shortcut_pressed(self, event_time=Gdk.CURRENT_TIME):
+        if not self.window.get_visible():
+            self.toggle_window(event_time)
+            self.shortcut_phase = "opening"
+            self.shortcut_poll_id = GLib.timeout_add(25, self.poll_shortcut_modifiers)
+        elif self.shortcut_phase in ("opening", "cycle") and self.x11 and \
+                self.x11.modifiers_down():
+            self.shortcut_phase = "cycle"
+            rows = self.rows.get_children()
+            if rows:
+                selected = self.selected()
+                index = rows.index(selected) if selected in rows else -1
+                self.rows.select_row(rows[(index + 1) % len(rows)])
+        else:
+            self.hide_window()
+
+    def poll_shortcut_modifiers(self):
+        if not self.window.get_visible() or self.shortcut_phase not in ("opening", "cycle"):
+            self.shortcut_phase = "toggle"
+            self.shortcut_poll_id = None
+            return False
+        if self.x11 and self.x11.modifiers_down():
+            return True
+        phase = self.shortcut_phase
+        self.shortcut_phase = "toggle"
+        self.shortcut_poll_id = None
+        if phase == "cycle":
+            row = self.selected()
+            if row:
+                self.choose(row)
+        return False
 
     def drag_title(self, _widget, event):
         if event.button == 1:
@@ -898,6 +943,8 @@ class App:
             self.preferences.present()
             return
         self.cancel_preview()
+        self.reset_shortcut_cycle()
+        self.remember_popup_position()
         self.window.hide()
         window = Gtk.Window(title="Linuxxy Preferences")
         window.set_default_size(460, 550)
@@ -921,7 +968,10 @@ class App:
             grid.attach(widget, 1, row, 1, 1)
 
         shortcut = Gtk.Entry(text=self.settings.get("shortcut"))
-        shortcut.set_tooltip_text("Example: Super+Shift+V")
+        shortcut.set_tooltip_text(
+            "Example: Super+Shift+V. Hold modifiers and press V again to cycle; "
+            "release them to choose."
+        )
         field(grids["General"], 0, "Open shortcut", shortcut)
         paste = Gtk.CheckButton(label="Paste by default (Alt+Enter reverses)")
         paste.set_active(self.settings.get("paste_by_default"))
@@ -1038,9 +1088,9 @@ class App:
                 from x11 import parse_shortcut
                 parse_shortcut(new_shortcut)
                 if self.x11 and new_shortcut != self.settings.get("shortcut"):
-                    new_x11 = X11(self.toggle_window, new_shortcut)
+                    new_x11 = X11(self.shortcut_pressed, new_shortcut)
                 elif not self.x11 and os.environ.get("XDG_SESSION_TYPE", "x11") == "x11":
-                    new_x11 = X11(self.toggle_window, new_shortcut)
+                    new_x11 = X11(self.shortcut_pressed, new_shortcut)
             except (ValueError, RuntimeError, OSError) as error:
                 alert = Gtk.MessageDialog(transient_for=window, modal=True,
                                           message_type=Gtk.MessageType.ERROR,
@@ -1172,8 +1222,8 @@ class App:
         if self.closed:
             return
         self.closed = True
-        if self.window.get_visible():
-            self.settings.set("popup_last_position", list(self.window.get_position()))
+        self.reset_shortcut_cycle()
+        self.remember_popup_position()
         self.cancel_preview()
         self.cancel_paste_stack()
         self.clipboard.disconnect(self.clipboard_handler)

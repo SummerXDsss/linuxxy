@@ -41,6 +41,9 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
 
 1. Copy text, an image, or files in any application.
 2. Press **Super+Shift+V** or click the tray icon.
+   While holding Super+Shift, press **V** again to move to the next item;
+   release the modifiers to copy the highlighted item. A single press leaves
+   the popup open for searching.
 3. Type to search. Press **Down** to focus results, then use arrow keys.
 4. Press **Enter** or click a result to copy it. Press **Alt+Enter** or
    **Alt+click** to paste it into the previous window. **Escape** hides the window.
@@ -131,6 +134,8 @@ checks its saved source, and captures the popup with the matching desktop icon.
 The [popup position test](tests/popup_position_smoke.py) measures and captures
 the popup at each position in a real X11 session. Without a tray host, the tray
 position falls back to the pointer.
+The [shortcut cycle test](tests/shortcut_cycle_smoke.py) exercises held modifiers,
+repeated opening-key presses, and selection on release with real X11 events.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy
 ranking, and snippets that keep later matches visible.
 The [install test](tests/install_smoke.py) checks a temporary user installation,
