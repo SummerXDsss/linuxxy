@@ -46,7 +46,7 @@ try:
         sample.fill(0x4e9aabff)
         ok, png = sample.save_to_bufferv('png', [], [])
         assert ok
-        history.add_image(png)
+        history.add_image(png, source_app='Preview Test')
         history.close()
         settings = Settings()
         settings.set('open_preview_automatically', False)
@@ -63,6 +63,11 @@ try:
             assert app.preview is app.preview_pane and app.preview_side == 'right'
             assert app.selected().kind == 'image'
             assert app.window.get_size()[0] > 440
+            details = [child.get_text() for child in app.preview_metadata.get_children()
+                       if isinstance(child, Gtk.Label)]
+            assert 'Application: Preview Test' in details
+            assert 'Dimensions: 160×80' in details
+            assert 'Copies: 1' in details
             screenshot(popup, 'ui_preview_image_right.png')
 
             keys('Down')
@@ -74,7 +79,21 @@ try:
             assert isinstance(text, Gtk.TextView)
             assert 'full preview follows' in text.get_buffer().get_text(
                 text.get_buffer().get_start_iter(), text.get_buffer().get_end_iter(), True)
+            details = [child.get_text() for child in app.preview_metadata.get_children()
+                       if isinstance(child, Gtk.Label)]
+            assert any(line.startswith('First copied: ') for line in details)
+            assert any(line.startswith('Last copied: ') for line in details)
             screenshot(popup, 'ui_preview_text_right.png')
+            image_row = next(row for row in app.rows.get_children() if row.kind == 'image')
+            x, y = image_row.translate_coordinates(app.window, 20, 15)
+            origin_x, origin_y = app.window.get_position()
+            connection = display.Display()
+            connection.screen().root.warp_pointer(origin_x + x, origin_y + y)
+            connection.sync()
+            connection.close()
+            pump()
+            assert app.selected() is image_row, 'Pointer hover did not select the image'
+            assert app.preview_entry_id == image_row.entry_id
             keys('Control_L', 'space')
             pump()
             assert app.preview is None and app.window.get_size()[0] == 440

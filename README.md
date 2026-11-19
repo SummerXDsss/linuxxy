@@ -44,7 +44,8 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
    While holding Super+Shift, press **V** again to move to the next item;
    release the modifiers to copy the highlighted item. A single press leaves
    the popup open for searching.
-3. Type to search. Press **Down** to focus results, then use arrow keys.
+3. Type to search. Press **Down** to focus results, then use arrow keys, or
+   move the pointer over a result to highlight it.
 4. Press **Enter** or click a result to copy it. Press **Alt+Enter** or
    **Alt+click** to paste it into the previous window. **Escape** hides the window.
    Use **Alt+Shift+Enter** or **Alt+Shift+click** to reverse the saved formatting
@@ -73,8 +74,9 @@ Use **Ctrl+Alt+Delete** to clear unpinned history or **Ctrl+Alt+Shift+Delete**
 to clear all history, including pinned entries. Clear unpinned history from the footer.
 Press **Ctrl+Space** to open or close a selected result's full text or image
 preview beside the list. The preview follows the selected item and opens on the
-side with room. This shortcut is configurable. The side preview also opens after
-the selected item rests for 1.5 seconds by default.
+side with room. It shows the source application when known, copy times and count,
+and image dimensions and size. This shortcut is configurable. The side preview
+also opens after the selected item rests for 1.5 seconds by default.
 Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
 the popup is open. General, Storage, and Appearance pages cover the opening
 shortcut, item pin/delete/preview shortcuts, default paste and formatting behavior,
@@ -143,7 +145,8 @@ repeated opening-key presses, and selection on release with real X11 events.
 The [action shortcut test](tests/action_shortcuts_smoke.py) records new pin,
 delete, and preview keys in the real settings window and uses them in the popup.
 The [preview slideout test](tests/preview_slideout_smoke.py) captures text and
-image previews on both sides of the popup and verifies live selection updates.
+image previews on both sides of the popup and verifies metadata and live
+selection updates, including pointer hover.
 The [shortcut behavior test](tests/action_shortcuts_behavior.py) checks validation,
 conflicts, disabled keys, and persistence.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy

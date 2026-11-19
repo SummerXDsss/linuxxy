@@ -152,6 +152,15 @@ class History:
             return None
         return dict(zip(("text", "kind", "data", "pinned", "pin_key", "alias"), row))
 
+    def metadata(self, entry_id: int):
+        row = self.db.execute(
+            "SELECT first_copied_at, copied_at, copy_count, source_app "
+            "FROM entries WHERE id=?", (entry_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(zip(("first_copied_at", "copied_at", "copy_count", "source_app"), row))
+
     def edit(self, entry_id: int, *, alias=_UNSET, content=None, pin_key=None):
         current = self.get(entry_id)
         if current is None:

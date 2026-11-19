@@ -6,6 +6,7 @@ import signal
 import fcntl
 import hashlib
 import time
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from Xlib.error import XError
@@ -104,6 +105,8 @@ class App:
         self.rows = Gtk.ListBox()
         self.rows.set_name("linuxxy-list")
         self.rows.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.rows.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
+        self.rows.connect("motion-notify-event", self.list_motion)
         self.rows.connect("row-activated", lambda _list, row: self.choose(row))
         self.rows.connect("row-selected", self.mark_selected)
         self.rows.connect("key-press-event", self.on_key)
@@ -149,6 +152,9 @@ class App:
         self.preview_scroll = Gtk.ScrolledWindow()
         self.preview_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.preview_pane.pack_start(self.preview_scroll, True, True, 0)
+        self.preview_metadata = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.preview_metadata.set_border_width(9)
+        self.preview_pane.pack_end(self.preview_metadata, False, False, 0)
         self.preview_pane.hide()
         self.update_search_visibility()
 
@@ -189,6 +195,7 @@ class App:
             #linuxxy-preview.left { border-left: none; border-right: 1px solid #4a4b50; }
             #linuxxy-preview-heading { color: #cccccc; font-size: 11px; }
             #linuxxy-preview button { color: #cccccc; }
+            #linuxxy-preview-metadata { color: #b6b6ba; font-size: 11px; }
             #linuxxy-preview textview, #linuxxy-preview textview text {
                 background: #222327; color: #eeeeee;
             }
@@ -410,6 +417,12 @@ class App:
             self.layout_preview()
         else:
             self.window.resize(*self.popup_size)
+
+    def list_motion(self, _list, event):
+        row = self.rows.get_row_at_y(int(event.y))
+        if row is not None and self.window.get_visible() and self.selected() is not row:
+            self.rows.select_row(row)
+        return False
 
     def row_click(self, row, event):
         if event.button == 1:
@@ -1298,13 +1311,37 @@ class App:
         old = self.preview_scroll.get_child()
         if old is not None:
             self.preview_scroll.remove(old)
-        preview_text = (row.data.decode("utf-8").replace("\r", "")
-                        if row.kind == "files" else row.value)
+        pixbuf = None
         if row.kind == "image":
             loader = GdkPixbuf.PixbufLoader.new_with_type("png")
             loader.write(row.data)
             loader.close()
             pixbuf = loader.get_pixbuf()
+        for child in self.preview_metadata.get_children():
+            self.preview_metadata.remove(child)
+        self.preview_metadata.pack_start(Gtk.Separator(), False, False, 3)
+        metadata = self.history.metadata(row.entry_id)
+        if metadata:
+            def detail(label, value):
+                line = Gtk.Label(label=f"{label}: {value}", xalign=0)
+                line.set_name("linuxxy-preview-metadata")
+                line.set_ellipsize(3)
+                self.preview_metadata.pack_start(line, False, False, 0)
+
+            if metadata["source_app"]:
+                detail("Application", metadata["source_app"])
+            if row.kind == "image":
+                detail("Dimensions", f"{pixbuf.get_width()}×{pixbuf.get_height()}")
+                detail("Size", GLib.format_size(len(row.data)))
+            for label, key in (("First copied", "first_copied_at"),
+                               ("Last copied", "copied_at")):
+                if metadata[key]:
+                    detail(label, datetime.fromtimestamp(metadata[key]).strftime("%Y-%m-%d %H:%M"))
+            detail("Copies", metadata["copy_count"])
+        self.preview_metadata.show_all()
+        preview_text = (row.data.decode("utf-8").replace("\r", "")
+                        if row.kind == "files" else row.value)
+        if row.kind == "image":
             scale = min(1, 340 / pixbuf.get_width(), 390 / pixbuf.get_height())
             if scale < 1:
                 pixbuf = pixbuf.scale_simple(max(1, int(pixbuf.get_width() * scale)),
@@ -1364,7 +1401,7 @@ class App:
         for child in self.preview_pane.get_children():
             child.show_all()
         self.preview_pane.show()
-        self.window.resize(440 + width, max(self.popup_size[1], 280))
+        self.window.resize(440 + width, max(self.popup_size[1], 360))
         self.window.move(origin, y)
 
     def close(self):
