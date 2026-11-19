@@ -5,13 +5,34 @@ from Xlib.ext import xtest
 from gi.repository import GLib
 
 
+def parse_shortcut(shortcut):
+    if not isinstance(shortcut, str):
+        raise ValueError("Shortcut must be text")
+    parts = [part.strip().lower() for part in shortcut.split("+")]
+    mapping = {"super": X.Mod4Mask, "shift": X.ShiftMask,
+               "ctrl": X.ControlMask, "alt": X.Mod1Mask}
+    if len(parts) < 2 or len(set(parts)) != len(parts):
+        raise ValueError("Use a shortcut such as Super+Shift+V")
+    *modifiers, key = parts
+    if any(part not in mapping for part in modifiers) or not any(
+        part in ("super", "ctrl", "alt") for part in modifiers
+    ):
+        raise ValueError("Shortcut needs Super, Ctrl, or Alt and one key")
+    if len(key) != 1 or not key.isascii() or not key.isalnum():
+        raise ValueError("Shortcut key must be one letter or digit")
+    return key, sum(mapping[part] for part in modifiers)
+
+
 class X11:
-    def __init__(self, on_shortcut):
+    def __init__(self, on_shortcut, shortcut="Super+Shift+V"):
+        key, self.modifiers = parse_shortcut(shortcut)
         self.display = display.Display()
         self.root = self.display.screen().root
         self.on_shortcut = on_shortcut
-        self.keycode = self.display.keysym_to_keycode(XK.string_to_keysym("v"))
-        self.modifiers = X.Mod4Mask | X.ShiftMask
+        self.keycode = self.display.keysym_to_keycode(XK.string_to_keysym(key))
+        if self.keycode == 0:
+            self.display.close()
+            raise ValueError(f"Shortcut key {key} is unavailable")
         self.masks = [0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask]
         self.grabbed = []
         try:
@@ -22,7 +43,7 @@ class X11:
                                    onerror=lambda error, _request: errors.append(error))
                 self.display.sync()
                 if errors:
-                    raise RuntimeError("Super+Shift+V is already in use")
+                    raise RuntimeError(f"{shortcut} is already in use")
                 self.grabbed.append(mask)
         except Exception:
             self.close()

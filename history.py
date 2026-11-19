@@ -27,12 +27,20 @@ class History:
                 "ON CONFLICT(text) DO UPDATE SET copied_at=excluded.copied_at",
                 (value, time.time()),
             )
-            self.db.execute(
-                "DELETE FROM entries WHERE id IN ("
-                "SELECT id FROM entries WHERE pinned=0 ORDER BY copied_at DESC, id DESC "
-                "LIMIT -1 OFFSET ?) ",
-                (self.limit,),
-            )
+            self._prune()
+
+    def _prune(self):
+        self.db.execute(
+            "DELETE FROM entries WHERE id IN ("
+            "SELECT id FROM entries WHERE pinned=0 ORDER BY copied_at DESC, id DESC "
+            "LIMIT -1 OFFSET ?)",
+            (self.limit,),
+        )
+
+    def set_limit(self, limit: int):
+        self.limit = limit
+        with self.db:
+            self._prune()
 
     def list(self, query: str = ""):
         # Filtering in Python keeps search case insensitive for Unicode text.
@@ -54,6 +62,10 @@ class History:
     def clear(self):
         with self.db:
             self.db.execute("DELETE FROM entries WHERE pinned=0")
+
+    def clear_all(self):
+        with self.db:
+            self.db.execute("DELETE FROM entries")
 
     def close(self):
         self.db.close()
