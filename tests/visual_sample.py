@@ -59,9 +59,11 @@ with tempfile.TemporaryDirectory() as directory:
 
     def render():
         try:
-            shot(app.window, 'popup.png')
             app.rows.select_row(app.rows.get_children()[1])
-            assert app.preview is None
+            assert app.preview is app.preview_pane
+            assert app.preview_entry_id == app.rows.get_children()[1].entry_id
+            app.cancel_preview()
+            shot(app.window, 'popup.png')
             app.settings.set('preview_delay_ms', 1500, save=False)
             app.show_settings()
         except Exception:
@@ -113,15 +115,9 @@ with tempfile.TemporaryDirectory() as directory:
         return False
 
     def render_preview():
-        assert app.preview and app.preview_auto and not app.preview.get_accept_focus()
-        popup_x, popup_y = app.window.get_position()
-        popup_width, popup_height = app.window.get_size()
-        preview_x, preview_y = app.preview.get_position()
-        preview_width, preview_height = app.preview.get_size()
-        assert (preview_x + preview_width <= popup_x or preview_x >= popup_x + popup_width or
-                preview_y + preview_height <= popup_y or preview_y >= popup_y + popup_height), \
-               'Automatic preview overlaps the popup'
-        shot(app.preview, 'auto_preview.png')
+        assert app.preview is app.preview_pane and app.preview_auto
+        assert app.preview_pane.get_visible() and app.window.get_size()[0] > 440
+        shot(app.window, 'auto_preview.png')
         return False
 
     GLib.timeout_add(400, render_preview)

@@ -71,9 +71,10 @@ You can also add entries to the queue from the right-click menu. Choosing
 another item or copying new content cancels the queue.
 Use **Ctrl+Alt+Delete** to clear unpinned history or **Ctrl+Alt+Shift+Delete**
 to clear all history, including pinned entries. Clear unpinned history from the footer.
-Press **Ctrl+Space** to open or close a selected result's full text or image preview. This
-shortcut is also configurable. A small
-preview also appears after the selected item rests for 1.5 seconds by default.
+Press **Ctrl+Space** to open or close a selected result's full text or image
+preview beside the list. The preview follows the selected item and opens on the
+side with room. This shortcut is configurable. The side preview also opens after
+the selected item rests for 1.5 seconds by default.
 Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
 the popup is open. General, Storage, and Appearance pages cover the opening
 shortcut, item pin/delete/preview shortcuts, default paste and formatting behavior,
@@ -141,6 +142,8 @@ The [shortcut cycle test](tests/shortcut_cycle_smoke.py) exercises held modifier
 repeated opening-key presses, and selection on release with real X11 events.
 The [action shortcut test](tests/action_shortcuts_smoke.py) records new pin,
 delete, and preview keys in the real settings window and uses them in the popup.
+The [preview slideout test](tests/preview_slideout_smoke.py) captures text and
+image previews on both sides of the popup and verifies live selection updates.
 The [shortcut behavior test](tests/action_shortcuts_behavior.py) checks validation,
 conflicts, disabled keys, and persistence.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy

@@ -51,6 +51,23 @@ def active_window():
     return result
 
 
+def window_size(xid):
+    connection = display.Display()
+    geometry = connection.create_resource_object('window', xid).get_geometry()
+    result = (geometry.width, geometry.height)
+    connection.close()
+    return result
+
+
+def window_position(xid):
+    connection = display.Display()
+    root = connection.screen().root
+    window = connection.create_resource_object('window', xid)
+    point = root.translate_coords(window, 0, 0)
+    connection.close()
+    return point.x, point.y
+
+
 def ensure_keyboard_available():
     connection = display.Display()
     root = connection.screen().root
@@ -144,11 +161,13 @@ def main():
             keys('Escape')
             wait_for(lambda: window_id('Edit clipboard item') is None)
             activate(popup)
+            popup_before_preview = window_position(popup)
             keys('Control_L', 'space')
-            preview = wait_for(lambda: window_id('Linuxxy Preview'))
-            screenshot(preview, 'ui_preview.png')
-            keys('Escape')
-            wait_for(lambda: window_id('Linuxxy Preview') is None)
+            wait_for(lambda: window_size(popup)[0] > 440)
+            screenshot(popup, 'ui_preview.png')
+            keys('Control_L', 'space')
+            wait_for(lambda: window_size(popup)[0] <= 440)
+            wait_for(lambda: abs(window_position(popup)[0] - popup_before_preview[0]) <= 4)
             activate(popup)
             keys('Control_L', 'comma')
             preferences = wait_for(lambda: window_id('Linuxxy Preferences'))

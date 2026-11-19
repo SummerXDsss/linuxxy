@@ -45,6 +45,12 @@ class App:
         self.ignore_own_change_until = 0
         self.preview_id = None
         self.preview_auto = False
+        self.preview = None
+        self.preview_entry_id = None
+        self.preview_side = "right"
+        self.preview_width = 360
+        self.preview_move_id = None
+        self.pending_popup_origin = None
         self.multi_selection = set()
         self.paste_stack = []
         self.paste_keys = None
@@ -56,7 +62,7 @@ class App:
         self.window = Gtk.Window(title="Linuxxy")
         self.window.set_default_size(440, 120)
         self.window.set_decorated(False)
-        self.window.set_resizable(False)
+        self.window.set_resizable(True)
         self.window.set_keep_above(True)
         self.window.set_skip_taskbar_hint(True)
         self.window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
@@ -64,9 +70,12 @@ class App:
         self.window.connect("delete-event", self.hide_window)
         self.window.connect("key-press-event", self.on_key)
         self.install_style()
+        self.popup_layout = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.window.add(self.popup_layout)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         box.set_border_width(7)
-        self.window.add(box)
+        box.set_size_request(440, -1)
+        self.popup_layout.pack_start(box, False, False, 0)
         self.search_line = Gtk.Box(spacing=5)
         self.search_line.set_no_show_all(True)
         box.pack_start(self.search_line, False, False, 3)
@@ -120,6 +129,27 @@ class App:
         hint = Gtk.Label(label="↵ Copy  ·  Alt+↵ Paste")
         hint.set_xalign(1)
         footer.pack_end(hint, False, False, 4)
+        self.preview_pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.preview_pane.set_name("linuxxy-preview")
+        self.preview_pane.set_no_show_all(True)
+        self.preview_pane.set_size_request(self.preview_width, -1)
+        self.popup_layout.pack_start(self.preview_pane, False, False, 0)
+        preview_header = Gtk.Box(spacing=6)
+        preview_header.set_border_width(7)
+        self.preview_pane.pack_start(preview_header, False, False, 0)
+        self.preview_heading = Gtk.Label(label="Preview", xalign=0)
+        self.preview_heading.set_name("linuxxy-preview-heading")
+        preview_header.pack_start(self.preview_heading, True, True, 0)
+        close_preview = Gtk.Button(label="×")
+        close_preview.set_relief(Gtk.ReliefStyle.NONE)
+        close_preview.set_can_focus(False)
+        close_preview.set_tooltip_text("Close preview")
+        close_preview.connect("clicked", lambda *_: self.cancel_preview())
+        preview_header.pack_end(close_preview, False, False, 0)
+        self.preview_scroll = Gtk.ScrolledWindow()
+        self.preview_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.preview_pane.pack_start(self.preview_scroll, True, True, 0)
+        self.preview_pane.hide()
         self.update_search_visibility()
 
         self.tray = Gtk.StatusIcon.new_from_icon_name("edit-paste")
@@ -155,6 +185,13 @@ class App:
             #linuxxy-index { color: #aaa; font-size: 10px; min-width: 16px; }
             box.linuxxy-multi-selected { background-color: #4d624b; border-radius: 5px; color: white; }
             #linuxxy-color-swatch { border: 1px solid #888; border-radius: 2px; }
+            #linuxxy-preview { background: #222327; border-left: 1px solid #4a4b50; }
+            #linuxxy-preview.left { border-left: none; border-right: 1px solid #4a4b50; }
+            #linuxxy-preview-heading { color: #cccccc; font-size: 11px; }
+            #linuxxy-preview button { color: #cccccc; }
+            #linuxxy-preview textview, #linuxxy-preview textview text {
+                background: #222327; color: #eeeeee;
+            }
         """)
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
@@ -369,7 +406,10 @@ class App:
         if not self.settings.get("show_footer"):
             height -= 26
         self.popup_size = (440, min(height, 470))
-        self.window.resize(*self.popup_size)
+        if self.preview is not None:
+            self.layout_preview()
+        else:
+            self.window.resize(*self.popup_size)
 
     def row_click(self, row, event):
         if event.button == 1:
@@ -446,16 +486,39 @@ class App:
         if self.preview_id and GLib.MainContext.default().find_source_by_id(self.preview_id):
             GLib.source_remove(self.preview_id)
         self.preview_id = None
-        if getattr(self, "preview", None):
-            self.preview.destroy()
+        if self.preview is not None:
+            x, y = self.window.get_position()
+            if self.preview_side == "left":
+                x += self.preview_width
+            self.preview_pane.hide()
+            self.preview = None
+            self.preview_auto = False
+            self.preview_entry_id = None
+            self.window.resize(*self.popup_size)
+            self.pending_popup_origin = (x, y)
+            self.window.move(x, y)
+            if self.preview_move_id is not None:
+                GLib.source_remove(self.preview_move_id)
+            self.preview_move_id = GLib.timeout_add(60, self.finish_preview_move)
+
+    def finish_preview_move(self):
+        self.preview_move_id = None
+        if self.window.get_visible() and self.preview is None and self.pending_popup_origin:
+            self.window.move(*self.pending_popup_origin)
+        self.pending_popup_origin = None
+        return False
 
     def schedule_preview(self):
         if self.preview_id and GLib.MainContext.default().find_source_by_id(self.preview_id):
             GLib.source_remove(self.preview_id)
         self.preview_id = None
-        if self.preview_auto and getattr(self, "preview", None):
-            self.preview.destroy()
         row = self.selected()
+        if self.preview is not None:
+            if row:
+                self.render_preview_content(row)
+            else:
+                self.cancel_preview()
+            return
         if (row and self.window.get_visible() and
                 self.settings.get("open_preview_automatically")):
             self.preview_id = GLib.timeout_add(
@@ -833,7 +896,10 @@ class App:
 
     def remember_popup_position(self):
         if self.window.get_visible():
-            self.settings.set("popup_last_position", list(self.window.get_position()))
+            x, y = self.pending_popup_origin or self.window.get_position()
+            if self.preview is not None and self.preview_side == "left":
+                x += self.preview_width
+            self.settings.set("popup_last_position", [x, y])
 
     def reset_shortcut_cycle(self):
         self.shortcut_phase = "toggle"
@@ -881,6 +947,10 @@ class App:
         return False
 
     def position_popup(self):
+        if self.preview_move_id is not None:
+            GLib.source_remove(self.preview_move_id)
+            self.preview_move_id = None
+        self.pending_popup_origin = None
         display = Gdk.Display.get_default()
         _screen, pointer_x, pointer_y, _mods = display.get_pointer()
         mode = self.settings.get("popup_position")
@@ -1213,70 +1283,89 @@ class App:
         row = self.selected()
         if not row:
             return
-        self.cancel_preview()
+        if self.preview_id and GLib.MainContext.default().find_source_by_id(self.preview_id):
+            GLib.source_remove(self.preview_id)
+        self.preview_id = None
+        self.preview = self.preview_pane
+        self.preview_auto = automatic
+        self.render_preview_content(row)
+        self.layout_preview()
+
+    def render_preview_content(self, row):
+        self.preview_entry_id = row.entry_id
+        self.preview_heading.set_text("Image" if row.kind == "image" else
+                                      "Files" if row.kind == "files" else "Preview")
+        old = self.preview_scroll.get_child()
+        if old is not None:
+            self.preview_scroll.remove(old)
         preview_text = (row.data.decode("utf-8").replace("\r", "")
                         if row.kind == "files" else row.value)
-        window = Gtk.Window(type=Gtk.WindowType.POPUP if automatic else Gtk.WindowType.TOPLEVEL)
-        window.set_title("Linuxxy Preview")
-        if not automatic:
-            window.set_transient_for(self.window)
-        if automatic and row.kind != "image":
-            lines = preview_text.splitlines() or [""]
-            wrapped_lines = sum(max(1, (len(line) + 49) // 50) for line in lines)
-            width = min(420, max(220, 36 + min(max(map(len, lines)), 50) * 8))
-            height = min(280, max(64, 24 + wrapped_lines * 22))
-        else:
-            width, height = (420, 280) if automatic else (600, 420)
-        window.set_default_size(width, height)
-        if automatic:
-            window.set_accept_focus(False)
-            window.set_decorated(False)
-            window.set_keep_above(True)
-            window.set_skip_taskbar_hint(True)
-        window.connect("key-press-event", lambda _w, event: self.close_preview(event))
-        window.connect("destroy", lambda *_: setattr(self, "preview", None))
-        scroll = Gtk.ScrolledWindow()
-        window.add(scroll)
         if row.kind == "image":
             loader = GdkPixbuf.PixbufLoader.new_with_type("png")
             loader.write(row.data)
             loader.close()
-            image = Gtk.Image.new_from_pixbuf(loader.get_pixbuf())
-            scroll.add_with_viewport(image)
+            pixbuf = loader.get_pixbuf()
+            scale = min(1, 340 / pixbuf.get_width(), 390 / pixbuf.get_height())
+            if scale < 1:
+                pixbuf = pixbuf.scale_simple(max(1, int(pixbuf.get_width() * scale)),
+                                             max(1, int(pixbuf.get_height() * scale)),
+                                             GdkPixbuf.InterpType.BILINEAR)
+            visual = Gtk.Image.new_from_pixbuf(pixbuf)
+            visual.set_margin_top(10)
+            self.preview_scroll.add_with_viewport(visual)
         else:
             text = Gtk.TextView()
             text.set_editable(False)
+            text.set_can_focus(False)
+            text.set_cursor_visible(False)
             text.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
             text.set_monospace(True)
             text.set_left_margin(12)
             text.set_right_margin(12)
+            text.set_top_margin(9)
             text.get_buffer().set_text(preview_text)
-            scroll.add(text)
-        if automatic:
-            popup_x, popup_y = self.window.get_position()
-            popup_width, _ = self.window.get_size()
-            display = Gdk.Display.get_default()
-            monitor = display.get_monitor_at_window(self.window.get_window())
-            work = monitor.get_workarea()
-            x = popup_x + popup_width + 8
-            if x + width > work.x + work.width:
-                x = popup_x - width - 8
-            x = max(work.x, min(x, work.x + work.width - width))
-            y = max(work.y, min(popup_y, work.y + work.height - height))
-            window.move(x, y)
-        self.preview = window
-        self.preview_auto = automatic
-        window.show_all()
-        if not automatic:
-            window.present()
+            self.preview_scroll.add(text)
+        self.preview_scroll.get_child().show_all()
 
-    def close_preview(self, event):
-        if event.keyval == Gdk.KEY_Escape or matches_action_shortcut(
-            self.settings.get("preview_shortcut"), event
-        ):
-            self.preview.destroy()
-            return True
-        return False
+    def layout_preview(self):
+        if self.preview is None:
+            return
+        x, y = self.window.get_position()
+        if not self.preview_pane.get_visible() and self.pending_popup_origin:
+            x, y = self.pending_popup_origin
+            self.pending_popup_origin = None
+            if self.preview_move_id is not None:
+                GLib.source_remove(self.preview_move_id)
+                self.preview_move_id = None
+        elif self.preview_pane.get_visible() and self.preview_side == "left":
+            x += self.preview_width
+        display = Gdk.Display.get_default()
+        monitor = display.get_monitor_at_point(x + 220, y)
+        work = monitor.get_workarea()
+        width = min(360, max(160, work.width - 440))
+        right_space = work.x + work.width - x - 440
+        left_space = x - work.x
+        if right_space >= width or right_space >= left_space:
+            side = "right"
+            origin = min(x, work.x + work.width - 440 - width)
+        else:
+            side = "left"
+            origin = max(work.x, x - width)
+        origin = max(work.x, origin)
+        self.preview_side = side
+        self.preview_width = width
+        style = self.preview_pane.get_style_context()
+        if side == "left":
+            style.add_class("left")
+        else:
+            style.remove_class("left")
+        self.popup_layout.reorder_child(self.preview_pane, 0 if side == "left" else 1)
+        self.preview_pane.set_size_request(width, -1)
+        for child in self.preview_pane.get_children():
+            child.show_all()
+        self.preview_pane.show()
+        self.window.resize(440 + width, max(self.popup_size[1], 280))
+        self.window.move(origin, y)
 
     def close(self):
         if self.closed:

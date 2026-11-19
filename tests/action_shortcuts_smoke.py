@@ -90,7 +90,6 @@ try:
             keys('Control_L', 'F3')
             pump()
             assert app.preview and app.preview.get_visible(), 'Recorded preview shortcut failed'
-            activate(GdkX11.X11Window.get_xid(app.preview.get_window()))
             keys('Control_L', 'F3')
             pump()
             assert app.preview is None, 'Recorded preview shortcut did not close preview'
