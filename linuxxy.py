@@ -385,7 +385,7 @@ class App:
             self.cancel_paste_stack()
         if paste is None:
             paste = self.settings.get("paste_by_default")
-        self.copy_entry(row, plain)
+        self.copy_entry(row, self.settings.get("remove_formatting_by_default") != plain)
         self.window.hide()
         self.search.set_text("")
         self.multi_selection.clear()
@@ -395,7 +395,9 @@ class App:
             self.paste_attempts = 0
             GLib.timeout_add(50, self.delayed_paste)
 
-    def copy_entry(self, row, plain=False):
+    def copy_entry(self, row, plain=None):
+        if plain is None:
+            plain = self.settings.get("remove_formatting_by_default")
         if plain and row.kind == "rich":
             self.ignore_own_change_until = time.monotonic() + 0.5
             self.clipboard.set_text(row.value, -1)
@@ -677,15 +679,18 @@ class App:
         paste = Gtk.CheckButton(label="Paste by default (Alt+Enter reverses)")
         paste.set_active(self.settings.get("paste_by_default"))
         grids["General"].attach(paste, 0, 1, 2, 1)
+        remove_formatting = Gtk.CheckButton(label="Remove formatting by default (Alt+Shift reverses)")
+        remove_formatting.set_active(self.settings.get("remove_formatting_by_default"))
+        grids["General"].attach(remove_formatting, 0, 2, 2, 1)
         search_mode = Gtk.ComboBoxText()
         for key, label in (("exact", "Exact"), ("fuzzy", "Fuzzy"),
                            ("regex", "Regular expression"), ("mixed", "Mixed")):
             search_mode.append(key, label)
         search_mode.set_active_id(self.settings.get("search_mode"))
-        field(grids["General"], 2, "Search mode", search_mode)
+        field(grids["General"], 3, "Search mode", search_mode)
         launch_at_login = Gtk.CheckButton(label="Launch at login")
         launch_at_login.set_active(self.settings.get("launch_at_login"))
-        grids["General"].attach(launch_at_login, 0, 3, 2, 1)
+        grids["General"].attach(launch_at_login, 0, 4, 2, 1)
 
         size = Gtk.SpinButton.new_with_range(1, 10000, 1)
         size.set_value(self.settings.get("history_size"))
@@ -772,6 +777,7 @@ class App:
             for key, value in (
                 ("shortcut", new_shortcut),
                 ("paste_by_default", paste.get_active()),
+                ("remove_formatting_by_default", remove_formatting.get_active()),
                 ("history_size", size.get_value_as_int()),
                 ("save_text", save_text.get_active()),
                 ("save_images", save_images.get_active()),

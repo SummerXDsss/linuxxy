@@ -8,6 +8,7 @@ from pathlib import Path
 DEFAULTS = {
     "shortcut": "Super+Shift+V",
     "paste_by_default": False,
+    "remove_formatting_by_default": False,
     "history_size": 200,
     "check_interval_ms": 500,
     "clear_on_quit": False,

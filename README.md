@@ -44,7 +44,8 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
 3. Type to search. Press **Down** to focus results, then use arrow keys.
 4. Press **Enter** or click a result to copy it. Press **Alt+Enter** or
    **Alt+click** to paste it into the previous window. **Escape** hides the window.
-   Use **Alt+Shift+Enter** or **Alt+Shift+click** to paste text without formatting.
+   Use **Alt+Shift+Enter** or **Alt+Shift+click** to reverse the saved formatting
+   preference for that paste (plain text by default).
 
 Use **Ctrl+1…9** to copy a visible result or **Alt+1…9** to paste it.
 Pinned entries get persistent letter shortcuts: **Ctrl+letter** copies,
@@ -66,8 +67,8 @@ Press **Space** on a selected result to preview its full text or image. A small
 preview also appears after the selected item rests for 1.5 seconds by default.
 Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
 the popup is open. General, Storage, and Appearance pages cover the opening
-shortcut, default paste action, text/image/file capture, history limit, clipboard
-check interval, history sorting (last copied, first copied, or most copied),
+shortcut, default paste and formatting behavior, text/image/file capture, history
+limit, clipboard check interval, history sorting (last copied, first copied, or most copied),
 search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
 underline, or color), pinned item position, popup position, automatic preview
 and its delay, footer visibility, clear-on-quit

@@ -108,6 +108,16 @@ def check(kind, formats, expected_data, query_code, expected_output=None):
                               "c=Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD);print(c.wait_for_text())")
                 assert plain == title, plain
                 assert app.history.list(title)[0][3] == 'rich'
+                app.settings.set('remove_formatting_by_default', True)
+                app.choose(row, paste=False)
+                assert query("import gi;gi.require_version('Gtk','3.0');"
+                             "gi.require_version('Gdk','3.0');from gi.repository import Gtk,Gdk;"
+                             "c=Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD);"
+                             "print(c.wait_is_target_available(Gdk.atom_intern('text/html',False)))"
+                             ) == 'False'
+                app.choose(row, paste=False, plain=True)
+                assert query(query_code) == expected_output
+                app.settings.set('remove_formatting_by_default', False)
                 app.choose(row, paste=False)
         finally:
             app.close()
