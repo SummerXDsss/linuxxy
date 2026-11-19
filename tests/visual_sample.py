@@ -79,6 +79,11 @@ with tempfile.TemporaryDirectory() as directory:
             app.quit()
             raise
         notebook = app.preferences.get_child().get_children()[0]
+        def descend(widget):
+            yield widget
+            if isinstance(widget, Gtk.Container):
+                for child in widget.get_children():
+                    yield from descend(child)
         def page(number):
             notebook.set_current_page(number)
             def take():
@@ -113,7 +118,7 @@ with tempfile.TemporaryDirectory() as directory:
                                        if isinstance(widget, Gtk.ComboBoxText))
                     search_mode.set_active_id('during_search')
                     search_toggle.set_active(False)
-                    popup_position = next(widget for widget in appearance.get_children()
+                    popup_position = next(widget for widget in descend(appearance)
                                           if isinstance(widget, Gtk.ComboBoxText) and
                                           widget.get_active_id() == 'cursor')
                     popup_position.set_active_id('screen_center')

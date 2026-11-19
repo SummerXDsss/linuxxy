@@ -530,6 +530,7 @@ class App:
         monitor = (display.get_monitor_at_window(self.window.get_window())
                    if self.window.get_visible() else
                    display.get_monitor_at_point(pointer_x, pointer_y))
+        monitor = self.popup_monitor(display, monitor)
         work = monitor.get_workarea()
         height_limit = min(self.settings.get("popup_max_height"), max(120, work.height - 20))
         pin_height = self.pin_count * 40 + self.pin_image_count * image_extra
@@ -1195,6 +1196,13 @@ class App:
             return True
         return False
 
+    def popup_monitor(self, display, fallback):
+        if self.settings.get("popup_position") in ("screen_center", "last_position"):
+            screen = self.settings.get("popup_screen")
+            if 0 < screen <= display.get_n_monitors():
+                return display.get_monitor(screen - 1)
+        return fallback
+
     def position_popup(self):
         if self.preview_move_id is not None:
             GLib.source_remove(self.preview_move_id)
@@ -1224,8 +1232,21 @@ class App:
         elif mode == "last_position" and self.settings.get("popup_last_position"):
             x, y = self.settings.get("popup_last_position")
             anchor_x, anchor_y = x, y
-        monitor = display.get_monitor_at_point(anchor_x, anchor_y)
+        fallback_point = (pointer_x, pointer_y) if mode == "last_position" else (anchor_x, anchor_y)
+        monitor = self.popup_monitor(display, display.get_monitor_at_point(*fallback_point))
         work = monitor.get_workarea()
+        if mode == "last_position" and self.settings.get("popup_last_position"):
+            source = display.get_monitor_at_point(anchor_x, anchor_y).get_workarea()
+            if source.x != work.x or source.y != work.y:
+                source_width = max(1, source.width - width)
+                source_height = max(1, source.height - height)
+                x = work.x + round((anchor_x - source.x) *
+                                   max(0, work.width - width) / source_width)
+                y = work.y + round((anchor_y - source.y) *
+                                   max(0, work.height - height) / source_height)
+        elif mode == "last_position":
+            x = work.x + (work.width - width) // 2
+            y = work.y + round(work.height * .2)
         if tray_rectangle and y + height > work.y + work.height:
             y = tray_rectangle.y - height
         if mode == "screen_center":
@@ -1429,7 +1450,52 @@ class App:
                            ("last_position", "Last position")):
             position.append(key, label)
         position.set_active_id(self.settings.get("popup_position"))
-        field(grids["Appearance"], 2, "Open popup", position)
+        position_controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        position_line = Gtk.Box(spacing=8)
+        position_line.pack_start(position, False, False, 0)
+        reset_last_position = [False]
+        reset_position = Gtk.Button(label="Reset last position")
+        reset_position.set_name("linuxxy-reset-position-setting")
+        reset_position.set_no_show_all(True)
+        def reset_saved_position(*_):
+            reset_last_position[0] = True
+            reset_position.hide()
+        reset_position.connect("clicked", reset_saved_position)
+        position_line.pack_start(reset_position, False, False, 0)
+        position_controls.pack_start(position_line, False, False, 0)
+        screen_row = Gtk.Box(spacing=8)
+        screen_row.set_no_show_all(True)
+        screen_row.pack_start(Gtk.Label(label="Screen"), False, False, 0)
+        screen_choice = Gtk.ComboBoxText()
+        screen_choice.set_name("linuxxy-popup-screen-setting")
+        screen_choice.append("0", "Active screen")
+        display = Gdk.Display.get_default()
+        for index in range(display.get_n_monitors()):
+            geometry = display.get_monitor(index).get_geometry()
+            screen_choice.append(str(index + 1),
+                                 f"Screen {index + 1} ({geometry.width}×{geometry.height})")
+        saved_screen = self.settings.get("popup_screen")
+        if saved_screen > display.get_n_monitors():
+            screen_choice.append(str(saved_screen), f"Screen {saved_screen} (disconnected)")
+        screen_choice.set_active_id(str(saved_screen))
+        screen_row.pack_start(screen_choice, False, False, 0)
+        position_controls.pack_start(screen_row, False, False, 0)
+
+        def update_position_controls(*_):
+            mode = position.get_active_id()
+            if display.get_n_monitors() > 1 and mode in ("screen_center", "last_position"):
+                for child in screen_row.get_children():
+                    child.show_all()
+                screen_row.show()
+            else:
+                screen_row.hide()
+            reset_position.set_visible(mode == "last_position" and
+                                       self.settings.get("popup_last_position") is not None and
+                                       not reset_last_position[0])
+
+        position.connect("changed", update_position_controls)
+        update_position_controls()
+        field(grids["Appearance"], 2, "Open popup", position_controls)
         show_footer = Gtk.CheckButton(label="Show footer")
         show_footer.set_active(self.settings.get("show_footer"))
         grids["Appearance"].attach(show_footer, 0, 3, 2, 1)
@@ -1564,6 +1630,7 @@ class App:
                 ("sort_by", sort_by.get_active_id()),
                 ("pins_position", pins_position.get_active_id()),
                 ("popup_position", position.get_active_id()),
+                ("popup_screen", int(screen_choice.get_active_id())),
                 ("popup_width", popup_width.get_value_as_int()),
                 ("popup_max_height", popup_height.get_value_as_int()),
                 ("show_footer", show_footer.get_active()),
@@ -1586,6 +1653,8 @@ class App:
                 ("launch_at_login", launch_at_login.get_active()),
             ):
                 self.settings.set(key, value, save=False)
+            if reset_last_position[0]:
+                self.settings.set("popup_last_position", None, save=False)
             self.settings.save()
             self.paused = self.settings.get("monitoring_paused")
             self.update_tray()
@@ -1604,6 +1673,7 @@ class App:
         save.connect("clicked", apply)
         self.preferences = window
         window.show_all()
+        update_position_controls()
         window.present()
 
     def toggle_pause(self):
