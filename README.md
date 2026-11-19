@@ -8,13 +8,14 @@ by [Maccy](https://github.com/p0deje/Maccy).
 - Linux desktop using X11; a system tray is recommended
 - Python 3
 - GTK 3 and PyGObject (`python3-gi` on Debian/Ubuntu)
+- Pycairo (`python3-cairo`); Pillow (`python3-pil`) is recommended for smooth glass blur
 - python-xlib (`python3-xlib` on Debian/Ubuntu)
 - XTEST and RECORD X11 extensions (normally installed with Xorg)
 
 On Debian/Ubuntu, install the Python dependencies with:
 
 ```sh
-sudo apt install python3-gi gir1.2-gtk-3.0 python3-xlib
+sudo apt install python3-gi gir1.2-gtk-3.0 python3-xlib python3-cairo python3-pil
 ```
 
 ## Install
@@ -97,7 +98,7 @@ search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
 underline, or color), pinned item position, popup position (pointer, tray icon,
 active window, screen center, or last position), a screen choice for center and
 last-position mode on multi-monitor desktops, a reset for the saved position,
-popup theme (follow system, light, or dark), automatic preview and its delay,
+popup theme (liquid glass, follow system, light, or dark), automatic preview and its delay,
 image thumbnail height, hex color swatches, visible whitespace
 symbols, search field visibility (always, while typing, or hidden), footer
 visibility, an optional title before the search field, optional source application
@@ -108,6 +109,11 @@ Backspace removes the last character.
 The tray icon can be hidden or changed to a clipboard, scissors, paperclip, or
 copy symbol. An option puts the latest unpinned item in its tooltip and status
 title; whether a tray host shows title text next to the icon depends on the desktop.
+Liquid glass is the default popup theme on composited X11 desktops. It blurs a
+snapshot of the desktop beneath the popup, adds a translucent tint and edge
+highlight, and follows the system's light or dark appearance. The backdrop is
+captured when the popup opens; it does not update while the popup stays open.
+Without Pillow, a simpler scaled blur is used.
 Storage shows the current history database size. Clearing history on quit keeps
 pinned items; the separate clear-all shortcut removes them.
 Drag the popup's title to move it; the last-position option reopens it there.
@@ -165,6 +171,9 @@ simulated monitor work areas to check placement and persistence.
 The [theme test](tests/theme_smoke.py) switches the popup among system, light,
 and dark modes in the real settings UI, measures the rendered background, and
 checks a live system theme change.
+The [glass theme test](tests/glass_theme_smoke.py) opens the popup over a patterned
+desktop, captures light, dark, and preview screenshots, and checks the blurred
+backdrop and live appearance change.
 The [shortcut cycle test](tests/shortcut_cycle_smoke.py) exercises held modifiers,
 repeated opening-key presses, and selection on release with real X11 events.
 The [action shortcut test](tests/action_shortcuts_smoke.py) records new pin,

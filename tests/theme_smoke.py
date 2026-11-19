@@ -77,6 +77,7 @@ try:
         history.pin(history.list()[0][0], True)
         history.close()
         settings = Settings()
+        settings.set('popup_theme', 'system')
         settings.set('popup_position', 'screen_center')
         settings.set('open_preview_automatically', False)
         app = App()

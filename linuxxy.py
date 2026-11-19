@@ -26,6 +26,7 @@ from x11_clipboard import X11Clipboard
 from search import snippet, visible_title
 from paste_keys import PasteKeys
 from color_swatch import rgba
+from glass import GlassWindow
 from action_shortcuts import (action_shortcut_from_event, matches_action_shortcut,
                               validate_action_shortcuts)
 
@@ -97,7 +98,7 @@ class App:
         self.shortcut_poll_id = None
         self.application_info = None
 
-        self.window = Gtk.Window(title="Linuxxy")
+        self.window = GlassWindow(title="Linuxxy")
         self.window.set_default_size(self.content_width, 120)
         self.window.set_decorated(False)
         self.window.set_resizable(True)
@@ -292,11 +293,13 @@ class App:
 
     def install_style(self):
         theme = self.settings.get("popup_theme")
-        if theme == "system":
+        glass = theme == "glass"
+        if theme in ("system", "glass"):
             gtk_settings = Gtk.Settings.get_default()
             name = (gtk_settings.get_property("gtk-theme-name") or "").lower()
             dark = gtk_settings.get_property("gtk-application-prefer-dark-theme")
             theme = "dark" if dark or "dark" in name else "light"
+        self.window.set_glass(glass, theme == "dark")
         colors = ({
             "popup": "#28292d", "border": "#4a4b50", "muted": "#b8b9bd",
             "text": "#eeeeee", "selected": "#466ca8", "hover": "#3b3d43",
@@ -339,6 +342,35 @@ class App:
                 background: @preview@; color: @text@;
             }
         """
+        if glass:
+            css += """
+                #linuxxy-popup { background: transparent; border: none; border-radius: 16px; }
+                #linuxxy-popup scrolledwindow, #linuxxy-popup viewport,
+                #linuxxy-popup textview, #linuxxy-popup textview text {
+                    background: transparent;
+                }
+                #linuxxy-popup separator { background: @glass_separator@; }
+                #linuxxy-search {
+                    background: @glass_search@;
+                    border: 1px solid @glass_search_border@;
+                    border-radius: 10px;
+                    box-shadow: 0 1px 4px @glass_shadow@;
+                }
+                #linuxxy-footer button:hover, #linuxxy-footer button:focus {
+                    background: @glass_hover@;
+                    border-radius: 7px;
+                }
+                #linuxxy-preview, #linuxxy-preview textview,
+                #linuxxy-preview textview text { background: transparent; }
+                #linuxxy-preview-divider { background: @glass_separator@; }
+            """
+            colors.update({
+                "glass_separator": "rgba(255,255,255,0.20)" if theme == "dark" else "rgba(92,112,146,0.22)",
+                "glass_search": "rgba(255,255,255,0.10)" if theme == "dark" else "rgba(255,255,255,0.60)",
+                "glass_search_border": "rgba(255,255,255,0.30)" if theme == "dark" else "rgba(255,255,255,0.86)",
+                "glass_shadow": "rgba(0,0,0,0.16)" if theme == "dark" else "rgba(54,74,112,0.12)",
+                "glass_hover": "rgba(255,255,255,0.13)" if theme == "dark" else "rgba(255,255,255,0.44)",
+            })
         for key, value in colors.items():
             css = css.replace(f"@{key}@", value)
         if not hasattr(self, "style_provider"):
@@ -349,7 +381,7 @@ class App:
         self.style_provider.load_from_data(css.encode())
 
     def system_theme_changed(self, *_):
-        if self.settings.get("popup_theme") == "system":
+        if self.settings.get("popup_theme") in ("system", "glass"):
             self.install_style()
 
     def on_clipboard_change(self, *_):
@@ -1458,7 +1490,8 @@ class App:
             if self.x11:
                 self.return_window = self.x11.active_window()
             self.refresh()
-            self.position_popup()
+            x, y = self.position_popup()
+            self.window.capture_backdrop(x, y)
             self.window.show_all()
             self.window.present_with_time(event_time)
             display = Gdk.Display.get_default()
@@ -1631,7 +1664,8 @@ class App:
 
         popup_theme = Gtk.ComboBoxText()
         popup_theme.set_name("linuxxy-popup-theme-setting")
-        for key, label in (("system", "Follow system"), ("light", "Light"),
+        for key, label in (("glass", "Liquid glass"),
+                           ("system", "Follow system"), ("light", "Light"),
                            ("dark", "Dark")):
             popup_theme.append(key, label)
         popup_theme.set_active_id(self.settings.get("popup_theme"))
