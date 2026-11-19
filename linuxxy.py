@@ -36,6 +36,8 @@ class App:
         self.rich_clipboard = None
         self.return_window = None
         self.ignore_own_change_until = 0
+        self.preview_id = None
+        self.preview_auto = False
 
         self.window = Gtk.Window(title="Linuxxy")
         self.window.set_default_size(440, 120)
@@ -175,7 +177,7 @@ class App:
         image_count = 0
         for index, (entry_id, value, pinned, kind, data) in enumerate(self.history.list(
             self.search.get_text(), self.settings.get("search_mode"),
-            self.settings.get("pins_position")
+            self.settings.get("pins_position"), self.settings.get("sort_by")
         )):
             row = Gtk.ListBoxRow()
             row.set_name("linuxxy-row")
@@ -274,8 +276,37 @@ class App:
             row.content.get_style_context().remove_class("linuxxy-selected")
         if selected:
             selected.content.get_style_context().add_class("linuxxy-selected")
+        self.schedule_preview()
+
+    def cancel_preview(self):
+        if self.preview_id and GLib.MainContext.default().find_source_by_id(self.preview_id):
+            GLib.source_remove(self.preview_id)
+        self.preview_id = None
+        if getattr(self, "preview", None):
+            self.preview.destroy()
+
+    def schedule_preview(self):
+        if self.preview_id and GLib.MainContext.default().find_source_by_id(self.preview_id):
+            GLib.source_remove(self.preview_id)
+        self.preview_id = None
+        if self.preview_auto and getattr(self, "preview", None):
+            self.preview.destroy()
+        row = self.selected()
+        if (row and self.window.get_visible() and
+                self.settings.get("open_preview_automatically")):
+            self.preview_id = GLib.timeout_add(
+                self.settings.get("preview_delay_ms"), self.show_automatic_preview, row.entry_id
+            )
+
+    def show_automatic_preview(self, entry_id):
+        self.preview_id = None
+        row = self.selected()
+        if row and row.entry_id == entry_id and self.window.get_visible():
+            self.show_preview(automatic=True)
+        return False
 
     def choose(self, row, paste=None, plain=False):
+        self.cancel_preview()
         if paste is None:
             paste = self.settings.get("paste_by_default")
         if plain and row.kind == "rich":
@@ -410,6 +441,7 @@ class App:
         return False
 
     def hide_window(self, *_):
+        self.cancel_preview()
         self.window.hide()
         self.search.set_text("")
         return True
@@ -433,6 +465,7 @@ class App:
             self.window.show_all()
             self.window.present()
             self.search.grab_focus()
+            self.schedule_preview()
 
     def tray_menu(self, _icon, button, activate_time):
         menu = Gtk.Menu()
@@ -450,9 +483,10 @@ class App:
         if getattr(self, "preferences", None) and self.preferences.get_visible():
             self.preferences.present()
             return
+        self.cancel_preview()
         self.window.hide()
         window = Gtk.Window(title="Linuxxy Preferences")
-        window.set_default_size(460, 320)
+        window.set_default_size(460, 380)
         window.set_border_width(14)
         window.set_transient_for(self.window)
         window.set_keep_above(True)
@@ -506,6 +540,13 @@ class App:
         clear_on_quit = Gtk.CheckButton(label="Clear history on quit")
         clear_on_quit.set_active(self.settings.get("clear_on_quit"))
         grids["Storage"].attach(clear_on_quit, 0, 5, 2, 1)
+        sort_by = Gtk.ComboBoxText()
+        for key, label in (("last_copied", "Last copied"),
+                           ("first_copied", "First copied"),
+                           ("most_copied", "Most copied")):
+            sort_by.append(key, label)
+        sort_by.set_active_id(self.settings.get("sort_by"))
+        field(grids["Storage"], 6, "Sort by", sort_by)
 
         pins_position = Gtk.ComboBoxText()
         pins_position.append("top", "Top")
@@ -518,6 +559,14 @@ class App:
         show_footer = Gtk.CheckButton(label="Show footer")
         show_footer.set_active(self.settings.get("show_footer"))
         grids["Appearance"].attach(show_footer, 0, 2, 2, 1)
+        auto_preview = Gtk.CheckButton(label="Open preview automatically")
+        auto_preview.set_active(self.settings.get("open_preview_automatically"))
+        grids["Appearance"].attach(auto_preview, 0, 3, 2, 1)
+        preview_delay = Gtk.SpinButton.new_with_range(200, 100000, 100)
+        preview_delay.set_value(self.settings.get("preview_delay_ms"))
+        preview_delay.set_sensitive(auto_preview.get_active())
+        auto_preview.connect("toggled", lambda button: preview_delay.set_sensitive(button.get_active()))
+        field(grids["Appearance"], 4, "Preview delay (ms)", preview_delay)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -558,9 +607,12 @@ class App:
                 ("save_files", save_files.get_active()),
                 ("check_interval_ms", interval.get_value_as_int()),
                 ("search_mode", search_mode.get_active_id()),
+                ("sort_by", sort_by.get_active_id()),
                 ("pins_position", pins_position.get_active_id()),
                 ("popup_at_cursor", position.get_active()),
                 ("show_footer", show_footer.get_active()),
+                ("open_preview_automatically", auto_preview.get_active()),
+                ("preview_delay_ms", preview_delay.get_value_as_int()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),
             ):
@@ -584,15 +636,29 @@ class App:
         self.paused = not self.paused
         self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
 
-    def show_preview(self):
+    def show_preview(self, automatic=False):
         row = self.selected()
         if not row:
             return
-        if getattr(self, "preview", None):
-            self.preview.destroy()
+        self.cancel_preview()
+        preview_text = (row.data.decode("utf-8").replace("\r", "")
+                        if row.kind == "files" else row.value)
         window = Gtk.Window(title="Linuxxy Preview")
         window.set_transient_for(self.window)
-        window.set_default_size(600, 420)
+        if automatic and row.kind != "image":
+            lines = preview_text.splitlines() or [""]
+            wrapped_lines = sum(max(1, (len(line) + 49) // 50) for line in lines)
+            width = min(420, max(220, 36 + min(max(map(len, lines)), 50) * 8))
+            height = min(280, max(64, 24 + wrapped_lines * 22))
+        else:
+            width, height = (420, 280) if automatic else (600, 420)
+        window.set_default_size(width, height)
+        if automatic:
+            window.set_accept_focus(False)
+            window.set_decorated(False)
+            window.set_keep_above(True)
+            window.set_type_hint(Gdk.WindowTypeHint.TOOLTIP)
+            window.set_skip_taskbar_hint(True)
         window.connect("key-press-event", lambda _w, event: self.close_preview(event))
         window.connect("destroy", lambda *_: setattr(self, "preview", None))
         scroll = Gtk.ScrolledWindow()
@@ -610,13 +676,26 @@ class App:
             text.set_monospace(True)
             text.set_left_margin(12)
             text.set_right_margin(12)
-            text.get_buffer().set_text(
-                row.data.decode("utf-8").replace("\r", "") if row.kind == "files" else row.value
-            )
+            text.get_buffer().set_text(preview_text)
             scroll.add(text)
         self.preview = window
+        self.preview_auto = automatic
         window.show_all()
-        window.present()
+        if automatic:
+            popup_x, popup_y = self.window.get_position()
+            popup_width, _ = self.window.get_size()
+            display = Gdk.Display.get_default()
+            monitor = display.get_monitor_at_window(self.window.get_window())
+            work = monitor.get_workarea()
+            width, height = window.get_size()
+            x = popup_x + popup_width + 8
+            if x + width > work.x + work.width:
+                x = popup_x - width - 8
+            x = max(work.x, min(x, work.x + work.width - width))
+            y = max(work.y, min(popup_y, work.y + work.height - height))
+            window.move(x, y)
+        else:
+            window.present()
 
     def close_preview(self, event):
         if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_space):
@@ -628,6 +707,7 @@ class App:
         if self.closed:
             return
         self.closed = True
+        self.cancel_preview()
         self.clipboard.disconnect(self.clipboard_handler)
         if GLib.MainContext.default().find_source_by_id(self.poll_id):
             GLib.source_remove(self.poll_id)

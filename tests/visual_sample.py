@@ -22,6 +22,8 @@ with tempfile.TemporaryDirectory() as directory:
     history.add_files(['file:///tmp/linuxxy-sample-document.txt'])
     history.close()
 
+    from settings import Settings
+    Settings().set('preview_delay_ms', 200)
     from linuxxy import App
     from gi.repository import Gtk, GLib, Gdk, GdkX11
     app = App()
@@ -48,6 +50,8 @@ with tempfile.TemporaryDirectory() as directory:
     def render():
         try:
             shot(app.window, 'popup.png')
+            app.rows.select_row(app.rows.get_children()[1])
+            assert app.preview is None
             app.show_settings()
         except Exception:
             app.quit()
@@ -71,6 +75,12 @@ with tempfile.TemporaryDirectory() as directory:
         page(0)
         return False
 
+    def render_preview():
+        assert app.preview and app.preview_auto and not app.preview.get_accept_focus()
+        shot(app.preview, 'auto_preview.png')
+        return False
+
+    GLib.timeout_add(400, render_preview)
     GLib.timeout_add(550, render)
     Gtk.main()
     print('visual samples saved in', OUT)

@@ -41,13 +41,16 @@ or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
 **Alt+P** to pin and **Alt+Delete** to delete the selected entry.
 Use **Ctrl+Alt+Delete** to clear unpinned history or **Ctrl+Alt+Shift+Delete**
 to clear all history, including pinned entries. Clear unpinned history from the footer.
-Press **Space** on a selected result to preview its full text or image.
+Press **Space** on a selected result to preview its full text or image. A small
+preview also appears after the selected item rests for 1.5 seconds by default.
 Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
 the popup is open. General, Storage, and Appearance pages cover the opening
 shortcut, default paste action, text/image/file capture, history limit, clipboard
-check interval, search mode (exact, fuzzy, regex, or mixed), pinned item
-position, popup position, footer visibility, clear-on-quit behavior, and launch
-at login. Preferences are saved in `$XDG_CONFIG_HOME/linuxxy/settings.json`.
+check interval, history sorting (last copied, first copied, or most copied),
+search mode (exact, fuzzy, regex, or mixed), pinned item position, popup
+position, automatic preview and its delay, footer visibility, clear-on-quit
+behavior, and launch at login. Preferences are saved in
+`$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.
 
 History is stored in an unencrypted SQLite database at
@@ -74,3 +77,5 @@ in addition to the runtime dependencies. Run the smoke test from an X11
 desktop when no other application has an active keyboard grab.
 The [format smoke test](tests/formats_smoke.py) verifies HTML and file copying
 between separate X11 applications and restores the clipboard afterward.
+The [history test](tests/history_behavior.py) verifies migration of older data,
+copy counts, sorting, and pin order.

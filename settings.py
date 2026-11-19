@@ -14,6 +14,9 @@ DEFAULTS = {
     "popup_at_cursor": True,
     "launch_at_login": False,
     "search_mode": "exact",
+    "sort_by": "last_copied",
+    "open_preview_automatically": True,
+    "preview_delay_ms": 1500,
     "pins_position": "top",
     "save_text": True,
     "save_images": True,
@@ -51,11 +54,16 @@ class Settings:
         elif key == "search_mode":
             if value not in ("exact", "fuzzy", "regex", "mixed"):
                 raise ValueError("Invalid search mode")
+        elif key == "sort_by":
+            if value not in ("last_copied", "first_copied", "most_copied"):
+                raise ValueError("Invalid sort order")
         elif key == "pins_position":
             if value not in ("top", "bottom"):
                 raise ValueError("Invalid pins position")
-        elif key in ("history_size", "check_interval_ms"):
-            if type(value) is not int or not 1 <= value <= (10000 if key == "history_size" else 5000):
+        elif key in ("history_size", "check_interval_ms", "preview_delay_ms"):
+            maximum = 10000 if key == "history_size" else 100000 if key == "preview_delay_ms" else 5000
+            minimum = 200 if key == "preview_delay_ms" else 1
+            if type(value) is not int or not minimum <= value <= maximum:
                 raise ValueError(f"Invalid {key}")
         elif type(value) is not bool:
             raise ValueError(f"Invalid {key}")

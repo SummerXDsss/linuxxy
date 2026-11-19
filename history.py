@@ -24,6 +24,15 @@ class History:
             self.db.execute("ALTER TABLE entries ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'")
         if "data" not in columns:
             self.db.execute("ALTER TABLE entries ADD COLUMN data BLOB")
+        if "first_copied_at" not in columns:
+            self.db.execute("ALTER TABLE entries ADD COLUMN first_copied_at REAL")
+        if "copy_count" not in columns:
+            self.db.execute("ALTER TABLE entries ADD COLUMN copy_count INTEGER")
+        if "pin_order" not in columns:
+            self.db.execute("ALTER TABLE entries ADD COLUMN pin_order INTEGER")
+        self.db.execute("UPDATE entries SET first_copied_at=copied_at WHERE first_copied_at IS NULL")
+        self.db.execute("UPDATE entries SET copy_count=1 WHERE copy_count IS NULL")
+        self.db.execute("UPDATE entries SET pin_order=id WHERE pinned=1 AND pin_order IS NULL")
         self.db.commit()
 
     def add(self, value: str):
@@ -53,12 +62,14 @@ class History:
         self._add(title + " " + hashlib.sha256(data).hexdigest(), "files", data)
 
     def _add(self, value, kind, data):
+        now = time.time()
         with self.db:
             self.db.execute(
-                "INSERT INTO entries(text, copied_at, kind, data) VALUES (?, ?, ?, ?) "
+                "INSERT INTO entries(text, copied_at, first_copied_at, copy_count, kind, data) "
+                "VALUES (?, ?, ?, 1, ?, ?) "
                 "ON CONFLICT(text) DO UPDATE SET copied_at=excluded.copied_at, "
-                "kind=excluded.kind, data=excluded.data",
-                (value, time.time(), kind, data),
+                "copy_count=entries.copy_count+1, kind=excluded.kind, data=excluded.data",
+                (value, now, now, kind, data),
             )
             self._prune()
 
@@ -75,9 +86,11 @@ class History:
         with self.db:
             self._prune()
 
-    def list(self, query: str = "", mode: str = "exact", pins_position: str = "top"):
+    def list(self, query: str = "", mode: str = "exact", pins_position: str = "top",
+             sort_by: str = "last_copied"):
         rows = self.db.execute(
-            "SELECT id, text, pinned, kind, data FROM entries "
+            "SELECT id, text, pinned, kind, data, first_copied_at, copy_count, "
+            "pin_order, copied_at FROM entries "
             "ORDER BY copied_at DESC, id DESC"
         ).fetchall()
         if query:
@@ -103,11 +116,20 @@ class History:
                     rows = []
             else:
                 rows = [row for row in rows if tests.get(mode, exact)(row)]
-        return sorted(rows, key=lambda row: row[2] if pins_position == "bottom" else -row[2])
+        metric = {"first_copied": 5, "most_copied": 6}.get(sort_by, 8)
+        def order(row):
+            if row[2]:
+                return (1 if pins_position == "bottom" else 0, row[7] or row[0], 0)
+            return (0 if pins_position == "bottom" else 1, -row[metric], -row[0])
+        return [row[:5] for row in sorted(rows, key=order)]
 
     def pin(self, entry_id: int, pinned: bool):
         with self.db:
-            self.db.execute("UPDATE entries SET pinned=? WHERE id=?", (int(pinned), entry_id))
+            next_order = self.db.execute(
+                "SELECT COALESCE(MAX(pin_order), 0) + 1 FROM entries"
+            ).fetchone()[0]
+            self.db.execute("UPDATE entries SET pinned=?, pin_order=? WHERE id=?",
+                            (int(pinned), next_order if pinned else None, entry_id))
 
     def delete(self, entry_id: int):
         with self.db:
