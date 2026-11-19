@@ -1,5 +1,7 @@
 """Check HTML and file URI clipboard round trips between separate X11 clients."""
 import os
+import hashlib
+import pickle
 import sqlite3
 import subprocess
 import sys
@@ -11,6 +13,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
 from gi.repository import Gtk, Gdk, GLib
+from Xlib import display
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -44,13 +47,19 @@ def query(code):
     return out.strip()
 
 
-def check(kind, formats, expected_data, query_code):
+def check(kind, formats, expected_data, query_code, expected_output=None):
     with tempfile.TemporaryDirectory() as directory:
         env = dict(os.environ, XDG_DATA_HOME=directory, XDG_CONFIG_HOME=directory,
                    XDG_RUNTIME_DIR=directory, PYTHONPATH=str(ROOT))
-        source_code = ('from x11_clipboard import X11Clipboard;from gi.repository import GLib;'
-                       'owner=X11Clipboard();owner.set(' + repr(formats) + ');'
-                       "print('ready',flush=True);GLib.MainLoop().run()")
+        payload = Path(directory) / 'formats.pickle'
+        with payload.open('wb') as output:
+            pickle.dump(formats, output)
+        source_code = (
+            'import pickle;from x11_clipboard import X11Clipboard;'
+            'from gi.repository import GLib;'
+            f"owner=X11Clipboard();owner.set(pickle.load(open({str(payload)!r},'rb')));"
+            "print('ready',flush=True);GLib.MainLoop().run()"
+        )
         source = subprocess.Popen([sys.executable, '-u', '-c', source_code], env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         app_process = None
@@ -81,20 +90,29 @@ def check(kind, formats, expected_data, query_code):
         assert history.list(title)[0][3] == kind
         history.close()
         app = App()
+        manager_display = display.Display()
+        manager = manager_display.get_selection_owner(manager_display.intern_atom('CLIPBOARD_MANAGER'))
+        has_manager = bool(getattr(manager, 'id', manager))
+        manager_display.close()
         try:
             row = next(row for row in app.rows.get_children() if row.kind == kind)
             app.choose(row, paste=False)
-            assert query(query_code) == ('<b>Rich test</b>' if kind == 'rich' else
-                                         "['file:///tmp/linuxxy-one.txt', 'file:///tmp/linuxxy-two.txt']")
+            if expected_output is None:
+                expected_output = ('<b>Rich test</b>' if kind == 'rich' else
+                                   "['file:///tmp/linuxxy-one.txt', 'file:///tmp/linuxxy-two.txt']")
+            assert query(query_code) == expected_output
             if kind == 'rich':
                 app.choose(row, paste=False, plain=True)
                 plain = query("import gi;gi.require_version('Gtk','3.0');"
                               "gi.require_version('Gdk','3.0');from gi.repository import Gtk,Gdk;"
                               "c=Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD);print(c.wait_for_text())")
-                assert plain == 'Rich test', plain
+                assert plain == title, plain
                 assert app.history.list(title)[0][3] == 'rich'
+                app.choose(row, paste=False)
         finally:
             app.close()
+        if has_manager:
+            assert query(query_code) == expected_output, 'Clipboard was lost after Linuxxy exited'
 
 
 def main():
@@ -112,7 +130,21 @@ def main():
               "import gi;gi.require_version('Gtk','3.0');gi.require_version('Gdk','3.0');"
               "from gi.repository import Gtk,Gdk;c=Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD);"
               "print(c.wait_for_uris())")
-        print('HTML and file URI round trips passed')
+        large_html = b'<p>' + b'A' * 500_000 + b'</p>'
+        check('rich', {'UTF8_STRING': b'Large HTML', 'text/html': large_html},
+              large_html,
+              "import gi,hashlib;gi.require_version('Gtk','3.0');"
+              "gi.require_version('Gdk','3.0');from gi.repository import Gtk,Gdk;"
+              "c=Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD);"
+              "print(hashlib.sha256(c.wait_for_contents(Gdk.atom_intern('text/html',False)).get_data()).hexdigest())",
+              hashlib.sha256(large_html).hexdigest())
+        large_uris = [f'file:///tmp/linuxxy-{index:05d}.txt' for index in range(10_000)]
+        large_files = ('\r\n'.join(large_uris) + '\r\n').encode()
+        check('files', {'text/uri-list': large_files}, large_files,
+              "import gi;gi.require_version('Gtk','3.0');gi.require_version('Gdk','3.0');"
+              "from gi.repository import Gtk,Gdk;c=Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD);"
+              "print(len(c.wait_for_uris()))", str(len(large_uris)))
+        print('Small and large HTML and file URI round trips passed')
     finally:
         if original_image:
             clipboard.set_image(original_image)

@@ -71,8 +71,9 @@ History is stored in an unencrypted SQLite database at
 `~/.local/share/linuxxy/history.sqlite`. The current version handles plain
 text, HTML alongside text, images, and file URI lists. Global shortcuts,
 automatic paste, and restoring rich formats require X11. Wayland support is
-future work. Rich clipboard payloads over 200 KB fall back to plain text when
-restored, and file/rich clipboard contents are owned by Linuxxy while it runs.
+future work. Large HTML and file lists use X11 incremental transfer. When the
+desktop provides a clipboard manager, Linuxxy hands off selected rich or file
+content on exit so it remains available to paste.
 
 ## License
 
@@ -88,8 +89,9 @@ preview, preferences, desktop, and pasted result to [screenshots](screenshots). 
 pages with known sample data. These scripts need `wmctrl`, `xwd`, and `ffmpeg`
 in addition to the runtime dependencies. Run the smoke test from an X11
 desktop when no other application has an active keyboard grab.
-The [format smoke test](tests/formats_smoke.py) verifies HTML and file copying
-between separate X11 applications and restores the clipboard afterward.
+The [format smoke test](tests/formats_smoke.py) verifies small and large HTML
+and file copying between separate X11 applications, checks content after exit
+when a clipboard manager is present, and restores the clipboard afterward.
 The [history test](tests/history_behavior.py) verifies migration of older data,
 copy counts, sorting, and pin order.
 The [install test](tests/install_smoke.py) checks a temporary user installation,

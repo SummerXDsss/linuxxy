@@ -105,6 +105,8 @@ def main():
             clipboard.set_text(original_text, -1)
         clipboard.store()
     atexit.register(restore)
+    clipboard.set_text('', -1)
+    clipboard.store()
     with tempfile.TemporaryDirectory() as directory:
         temp = Path(directory)
         env = dict(os.environ, XDG_DATA_HOME=directory, XDG_CONFIG_HOME=directory,

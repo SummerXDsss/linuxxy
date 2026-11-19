@@ -728,6 +728,7 @@ class App:
         if self.x11:
             self.x11.close()
         if self.rich_clipboard:
+            self.rich_clipboard.store()
             self.rich_clipboard.close()
         self.history.close()
 
