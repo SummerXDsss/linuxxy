@@ -71,7 +71,7 @@ shortcut, default paste and formatting behavior, text/image/file capture, histor
 limit, clipboard check interval, history sorting (last copied, first copied, or most copied),
 search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
 underline, or color), pinned item position, popup position, automatic preview
-and its delay, footer visibility, clear-on-quit
+and its delay, image thumbnail height, footer visibility, clear-on-quit
 behavior, and launch at login. Preferences are saved in
 `$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.

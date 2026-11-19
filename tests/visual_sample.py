@@ -20,6 +20,14 @@ with tempfile.TemporaryDirectory() as directory:
     history.pin(history.list()[0][0], True)
     history.add_rich('linuxxy-sample formatted text', b'<b>linuxxy-sample formatted text</b>')
     history.add_files(['file:///tmp/linuxxy-sample-document.txt'])
+    import gi
+    gi.require_version('GdkPixbuf', '2.0')
+    from gi.repository import GdkPixbuf
+    image = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 160, 80)
+    image.fill(0x4e9aabff)
+    ok, png = image.save_to_bufferv('png', [], [])
+    assert ok
+    history.add_image(png)
     history.close()
 
     from settings import Settings
@@ -27,7 +35,7 @@ with tempfile.TemporaryDirectory() as directory:
     from linuxxy import App
     from gi.repository import Gtk, GLib, Gdk, GdkX11
     app = App()
-    app.search.set_text('linuxxy-sample')
+    app.search.set_text('')
     app.toggle_window()
 
     def shot(window, name):

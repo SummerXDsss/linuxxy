@@ -19,6 +19,7 @@ DEFAULTS = {
     "open_preview_automatically": True,
     "preview_delay_ms": 1500,
     "highlight_match": "bold",
+    "image_max_height": 40,
     "pins_position": "top",
     "save_text": True,
     "save_images": True,
@@ -65,6 +66,9 @@ class Settings:
         elif key == "pins_position":
             if value not in ("top", "bottom"):
                 raise ValueError("Invalid pins position")
+        elif key == "image_max_height":
+            if type(value) is not int or not 1 <= value <= 200:
+                raise ValueError("Invalid image height")
         elif key in ("history_size", "check_interval_ms", "preview_delay_ms"):
             maximum = 10000 if key == "history_size" else 100000 if key == "preview_delay_ms" else 5000
             minimum = 200 if key == "preview_delay_ms" else 1

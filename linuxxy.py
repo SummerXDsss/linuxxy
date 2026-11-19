@@ -125,6 +125,7 @@ class App:
             #linuxxy-search { min-height: 30px; margin: 2px 2px 4px 2px; }
             #linuxxy-list, #linuxxy-list > row { background: transparent; }
             #linuxxy-list > row { min-height: 31px; border-radius: 5px; }
+            #linuxxy-list > row label { color: #eeeeee; }
             box.linuxxy-selected { background-color: #466ca8; border-radius: 5px; color: white; }
             #linuxxy-footer button { min-height: 20px; padding: 0 6px; font-size: 11px; }
             #linuxxy-footer label { color: #aaa; font-size: 11px; }
@@ -211,7 +212,8 @@ class App:
                 loader.write(data)
                 loader.close()
                 pixbuf = loader.get_pixbuf()
-                scale = min(1, 64 / max(pixbuf.get_width(), pixbuf.get_height()))
+                scale = min(1, 340 / pixbuf.get_width(),
+                            self.settings.get("image_max_height") / pixbuf.get_height())
                 thumbnail = pixbuf.scale_simple(max(1, int(pixbuf.get_width() * scale)),
                                                 max(1, int(pixbuf.get_height() * scale)),
                                                 GdkPixbuf.InterpType.BILINEAR)
@@ -277,7 +279,8 @@ class App:
     def resize_popup(self, count, image_count=0):
         # Match the content instead of leaving a large empty window behind.
         visible = min(count, 9)
-        height = 105 + max(34, visible * 40 + min(image_count, visible) * 30)
+        image_extra = max(0, self.settings.get("image_max_height") - 30)
+        height = 105 + max(34, visible * 40 + min(image_count, visible) * image_extra)
         if not self.settings.get("show_footer"):
             height -= 26
         self.window.resize(440, min(height, 470))
@@ -653,7 +656,7 @@ class App:
         self.cancel_preview()
         self.window.hide()
         window = Gtk.Window(title="Linuxxy Preferences")
-        window.set_default_size(460, 380)
+        window.set_default_size(460, 430)
         window.set_border_width(14)
         window.set_transient_for(self.window)
         window.set_keep_above(True)
@@ -723,26 +726,29 @@ class App:
         pins_position.append("bottom", "Bottom")
         pins_position.set_active_id(self.settings.get("pins_position"))
         field(grids["Appearance"], 0, "Pinned items", pins_position)
+        image_height = Gtk.SpinButton.new_with_range(1, 200, 1)
+        image_height.set_value(self.settings.get("image_max_height"))
+        field(grids["Appearance"], 1, "Image thumbnail height", image_height)
         position = Gtk.CheckButton(label="Open near pointer")
         position.set_active(self.settings.get("popup_at_cursor"))
-        grids["Appearance"].attach(position, 0, 1, 2, 1)
+        grids["Appearance"].attach(position, 0, 2, 2, 1)
         show_footer = Gtk.CheckButton(label="Show footer")
         show_footer.set_active(self.settings.get("show_footer"))
-        grids["Appearance"].attach(show_footer, 0, 2, 2, 1)
+        grids["Appearance"].attach(show_footer, 0, 3, 2, 1)
         auto_preview = Gtk.CheckButton(label="Open preview automatically")
         auto_preview.set_active(self.settings.get("open_preview_automatically"))
-        grids["Appearance"].attach(auto_preview, 0, 3, 2, 1)
+        grids["Appearance"].attach(auto_preview, 0, 4, 2, 1)
         preview_delay = Gtk.SpinButton.new_with_range(200, 100000, 100)
         preview_delay.set_value(self.settings.get("preview_delay_ms"))
         preview_delay.set_sensitive(auto_preview.get_active())
         auto_preview.connect("toggled", lambda button: preview_delay.set_sensitive(button.get_active()))
-        field(grids["Appearance"], 4, "Preview delay (ms)", preview_delay)
+        field(grids["Appearance"], 5, "Preview delay (ms)", preview_delay)
         highlight_match = Gtk.ComboBoxText()
         for key, name in (("bold", "Bold"), ("italic", "Italic"),
                           ("underline", "Underline"), ("color", "Color")):
             highlight_match.append(key, name)
         highlight_match.set_active_id(self.settings.get("highlight_match"))
-        field(grids["Appearance"], 5, "Highlight matches", highlight_match)
+        field(grids["Appearance"], 6, "Highlight matches", highlight_match)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -791,6 +797,7 @@ class App:
                 ("open_preview_automatically", auto_preview.get_active()),
                 ("preview_delay_ms", preview_delay.get_value_as_int()),
                 ("highlight_match", highlight_match.get_active_id()),
+                ("image_max_height", image_height.get_value_as_int()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),
             ):
