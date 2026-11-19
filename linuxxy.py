@@ -4,13 +4,15 @@
 import os
 import signal
 import fcntl
+import hashlib
 from pathlib import Path
 
 import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, GLib, Gtk
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 from history import History
 from autostart import set_enabled as set_autostart
@@ -64,7 +66,8 @@ class App:
         self.tray.connect("activate", lambda *_: self.toggle_window())
         self.tray.connect("popup-menu", self.tray_menu)
         self.poll_id = GLib.timeout_add(self.settings.get("check_interval_ms"), self.poll_clipboard)
-        self.last_text = self.clipboard.wait_for_text()
+        self.last_signature = None
+        self.capture()
         self.refresh()
         if os.environ.get("XDG_SESSION_TYPE", "x11") == "x11":
             try:
@@ -80,11 +83,20 @@ class App:
         return True
 
     def capture(self):
-        text = self.clipboard.wait_for_text()
-        if text != self.last_text:
-            self.last_text = text
-            if not self.paused and text:
-                self.history.add(text)
+        image = self.clipboard.wait_for_image() if self.clipboard.wait_is_image_available() else None
+        if image:
+            ok, data = image.save_to_bufferv("png", [], [])
+            signature = ("image", hashlib.sha256(data).digest()) if ok else None
+        else:
+            text = self.clipboard.wait_for_text()
+            signature = ("text", text)
+        if signature != self.last_signature:
+            self.last_signature = signature
+            if not self.paused:
+                if image and signature:
+                    self.history.add_image(data)
+                elif not image and text:
+                    self.history.add(text)
                 self.refresh()
         return False
 
@@ -94,18 +106,36 @@ class App:
         for child in self.rows.get_children():
             self.rows.remove(child)
         restored = None
-        for entry_id, value, pinned in self.history.list(
+        for entry_id, value, pinned, kind, data in self.history.list(
             self.search.get_text(), self.settings.get("search_mode"),
             self.settings.get("pins_position")
         ):
             row = Gtk.ListBoxRow()
             row.entry_id, row.value, row.pinned = entry_id, value, bool(pinned)
-            preview = " ".join(value.split())[:160]
+            row.kind, row.data = kind, data
+            if kind == "image" and data:
+                loader = GdkPixbuf.PixbufLoader.new_with_type("png")
+                loader.write(data)
+                loader.close()
+                pixbuf = loader.get_pixbuf()
+                scale = min(1, 64 / max(pixbuf.get_width(), pixbuf.get_height()))
+                thumbnail = pixbuf.scale_simple(max(1, int(pixbuf.get_width() * scale)),
+                                                max(1, int(pixbuf.get_height() * scale)),
+                                                GdkPixbuf.InterpType.BILINEAR)
+                visual = Gtk.Image.new_from_pixbuf(thumbnail)
+                preview = "Image"
+            else:
+                visual = None
+                preview = " ".join(value.split())[:160]
             label = Gtk.Label(label=("📌 " if pinned else "") + preview, xalign=0)
             label.set_ellipsize(3)
             label.set_margin_top(5)
             label.set_margin_bottom(5)
-            row.add(label)
+            content = Gtk.Box(spacing=8)
+            if visual:
+                content.pack_start(visual, False, False, 0)
+            content.pack_start(label, True, True, 0)
+            row.add(content)
             self.rows.add(row)
             if entry_id == selected_id:
                 restored = row
@@ -119,10 +149,18 @@ class App:
     def choose(self, row, paste=None):
         if paste is None:
             paste = self.settings.get("paste_by_default")
-        self.clipboard.set_text(row.value, -1)
+        if row.kind == "image":
+            loader = GdkPixbuf.PixbufLoader.new_with_type("png")
+            loader.write(row.data)
+            loader.close()
+            self.clipboard.set_image(loader.get_pixbuf())
+            self.last_signature = ("image", hashlib.sha256(row.data).digest())
+            self.history.add_image(row.data)
+        else:
+            self.clipboard.set_text(row.value, -1)
+            self.last_signature = ("text", row.value)
+            self.history.add(row.value)
         self.clipboard.store()
-        self.last_text = row.value
-        self.history.add(row.value)
         self.window.hide()
         self.search.set_text("")
         self.refresh()

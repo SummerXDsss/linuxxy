@@ -3,6 +3,7 @@
 import sqlite3
 import time
 import re
+import hashlib
 from pathlib import Path
 
 
@@ -17,16 +18,31 @@ class History:
             "id INTEGER PRIMARY KEY, text TEXT NOT NULL UNIQUE, "
             "copied_at REAL NOT NULL, pinned INTEGER NOT NULL DEFAULT 0)"
         )
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(entries)")}
+        if "kind" not in columns:
+            self.db.execute("ALTER TABLE entries ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'")
+        if "data" not in columns:
+            self.db.execute("ALTER TABLE entries ADD COLUMN data BLOB")
         self.db.commit()
 
     def add(self, value: str):
         if not value or not value.strip():
             return
+        self._add(value, "text", None)
+
+    def add_image(self, data: bytes):
+        if not data:
+            return
+        digest = hashlib.sha256(data).hexdigest()
+        self._add("Image " + digest, "image", data)
+
+    def _add(self, value, kind, data):
         with self.db:
             self.db.execute(
-                "INSERT INTO entries(text, copied_at) VALUES (?, ?) "
-                "ON CONFLICT(text) DO UPDATE SET copied_at=excluded.copied_at",
-                (value, time.time()),
+                "INSERT INTO entries(text, copied_at, kind, data) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(text) DO UPDATE SET copied_at=excluded.copied_at, "
+                "kind=excluded.kind, data=excluded.data",
+                (value, time.time(), kind, data),
             )
             self._prune()
 
@@ -45,7 +61,7 @@ class History:
 
     def list(self, query: str = "", mode: str = "exact", pins_position: str = "top"):
         rows = self.db.execute(
-            "SELECT id, text, pinned FROM entries "
+            "SELECT id, text, pinned, kind, data FROM entries "
             "ORDER BY copied_at DESC, id DESC"
         ).fetchall()
         if query:

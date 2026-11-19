@@ -28,7 +28,7 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
 
 ## Use
 
-1. Copy some text in any application.
+1. Copy text or an image in any application.
 2. Press **Super+Shift+V** or click the tray icon.
 3. Type to search. Press **Down** to focus results, then use arrow keys.
 4. Press **Enter** or double-click a result to paste it into the previous window.
@@ -43,10 +43,10 @@ item position, popup position, clear-on-quit behavior, and launch at
 login. Preferences are saved in `$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.
 
-History is stored as plain text in an unencrypted SQLite database at
+History is stored in an unencrypted SQLite database at
 `$XDG_DATA_HOME/linuxxy/history.sqlite`, usually
-`~/.local/share/linuxxy/history.sqlite`. The current version handles text only.
-Global shortcuts and automatic paste require X11. Wayland support, images,
+`~/.local/share/linuxxy/history.sqlite`. The current version handles text and
+images. Global shortcuts and automatic paste require X11. Wayland support,
 files, and rich text are future work.
 
 ## License
