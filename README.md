@@ -38,7 +38,8 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
 You can also pin or delete the selected entry, or clear all unpinned entries.
 Open **Preferences…** from the tray menu or press **Ctrl+,** while the popup is
 open. You can change the opening shortcut, default paste action, history limit,
-clipboard check interval, popup position, clear-on-quit behavior, and launch at
+clipboard check interval, search mode (exact, fuzzy, regex, or mixed), pinned
+item position, popup position, clear-on-quit behavior, and launch at
 login. Preferences are saved in `$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.
 

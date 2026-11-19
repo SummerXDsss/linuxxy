@@ -13,6 +13,8 @@ DEFAULTS = {
     "clear_on_quit": False,
     "popup_at_cursor": True,
     "launch_at_login": False,
+    "search_mode": "exact",
+    "pins_position": "top",
 }
 
 
@@ -42,6 +44,12 @@ class Settings:
         if key == "shortcut":
             from x11 import parse_shortcut
             parse_shortcut(value)
+        elif key == "search_mode":
+            if value not in ("exact", "fuzzy", "regex", "mixed"):
+                raise ValueError("Invalid search mode")
+        elif key == "pins_position":
+            if value not in ("top", "bottom"):
+                raise ValueError("Invalid pins position")
         elif key in ("history_size", "check_interval_ms"):
             if type(value) is not int or not 1 <= value <= (10000 if key == "history_size" else 5000):
                 raise ValueError(f"Invalid {key}")

@@ -94,7 +94,10 @@ class App:
         for child in self.rows.get_children():
             self.rows.remove(child)
         restored = None
-        for entry_id, value, pinned in self.history.list(self.search.get_text()):
+        for entry_id, value, pinned in self.history.list(
+            self.search.get_text(), self.settings.get("search_mode"),
+            self.settings.get("pins_position")
+        ):
             row = Gtk.ListBoxRow()
             row.entry_id, row.value, row.pinned = entry_id, value, bool(pinned)
             preview = " ".join(value.split())[:160]
@@ -248,17 +251,28 @@ class App:
         interval = Gtk.SpinButton.new_with_range(100, 5000, 100)
         interval.set_value(self.settings.get("check_interval_ms"))
         field(3, "Clipboard check (ms)", interval)
+        search_mode = Gtk.ComboBoxText()
+        for key, label in (("exact", "Exact"), ("fuzzy", "Fuzzy"),
+                           ("regex", "Regular expression"), ("mixed", "Mixed")):
+            search_mode.append(key, label)
+        search_mode.set_active_id(self.settings.get("search_mode"))
+        field(4, "Search mode", search_mode)
+        pins_position = Gtk.ComboBoxText()
+        pins_position.append("top", "Top")
+        pins_position.append("bottom", "Bottom")
+        pins_position.set_active_id(self.settings.get("pins_position"))
+        field(5, "Pinned items", pins_position)
         position = Gtk.CheckButton(label="Open near pointer")
         position.set_active(self.settings.get("popup_at_cursor"))
-        grid.attach(position, 0, 4, 2, 1)
+        grid.attach(position, 0, 6, 2, 1)
         clear_on_quit = Gtk.CheckButton(label="Clear history on quit")
         clear_on_quit.set_active(self.settings.get("clear_on_quit"))
-        grid.attach(clear_on_quit, 0, 5, 2, 1)
+        grid.attach(clear_on_quit, 0, 7, 2, 1)
         launch_at_login = Gtk.CheckButton(label="Launch at login")
         launch_at_login.set_active(self.settings.get("launch_at_login"))
-        grid.attach(launch_at_login, 0, 6, 2, 1)
+        grid.attach(launch_at_login, 0, 8, 2, 1)
         buttons = Gtk.Box(spacing=8)
-        grid.attach(buttons, 0, 7, 2, 1)
+        grid.attach(buttons, 0, 9, 2, 1)
         cancel = Gtk.Button(label="Cancel")
         cancel.connect("clicked", lambda *_: window.destroy())
         buttons.pack_end(cancel, False, False, 0)
@@ -293,6 +307,8 @@ class App:
                 ("paste_by_default", paste.get_active()),
                 ("history_size", size.get_value_as_int()),
                 ("check_interval_ms", interval.get_value_as_int()),
+                ("search_mode", search_mode.get_active_id()),
+                ("pins_position", pins_position.get_active_id()),
                 ("popup_at_cursor", position.get_active()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),

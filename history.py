@@ -2,6 +2,7 @@
 
 import sqlite3
 import time
+import re
 from pathlib import Path
 
 
@@ -42,14 +43,35 @@ class History:
         with self.db:
             self._prune()
 
-    def list(self, query: str = ""):
-        # Filtering in Python keeps search case insensitive for Unicode text.
+    def list(self, query: str = "", mode: str = "exact", pins_position: str = "top"):
         rows = self.db.execute(
             "SELECT id, text, pinned FROM entries "
-            "ORDER BY pinned DESC, copied_at DESC, id DESC"
+            "ORDER BY copied_at DESC, id DESC"
         ).fetchall()
-        needle = query.casefold()
-        return [row for row in rows if needle in row[1].casefold()]
+        if query:
+            needle = query.casefold()
+            def exact(row):
+                return needle in row[1].casefold()
+            def fuzzy(row):
+                letters = iter(row[1].casefold())
+                return all(any(char == found for found in letters) for char in needle)
+            def regex(row):
+                try:
+                    return re.search(query, row[1], re.IGNORECASE) is not None
+                except re.error:
+                    return False
+            tests = {"exact": exact, "fuzzy": fuzzy, "regex": regex}
+            if mode == "mixed":
+                for test in (exact, regex, fuzzy):
+                    matching = [row for row in rows if test(row)]
+                    if matching:
+                        rows = matching
+                        break
+                else:
+                    rows = []
+            else:
+                rows = [row for row in rows if tests.get(mode, exact)(row)]
+        return sorted(rows, key=lambda row: row[2] if pins_position == "bottom" else -row[2])
 
     def pin(self, entry_id: int, pinned: bool):
         with self.db:
