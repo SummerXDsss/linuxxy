@@ -51,6 +51,18 @@ with tempfile.TemporaryDirectory() as directory:
         old_id = next(row[0] for row in history.list() if row[1] == 'old')
         history.pin(old_id, True)
         assert history.list()[0][5] == 'b'
+        history.pin(entry_id, True)
+        third_id = next(row[0] for row in history.list() if row[1] == 'third')
+        history.pin(third_id, True)
+        assert history.move_pin(third_id, -1)
+        assert [row[1] for row in history.list()] == ['old', 'third', 'new']
+        assert not history.move_pin(old_id, -1)
+        assert {row[1]: row[5] for row in history.list()} == {
+            'old': 'b', 'new': 'c', 'third': 'd'
+        }
+        history.close()
+        history = History(path)
+        assert [row[1] for row in history.list()] == ['old', 'third', 'new']
     finally:
         history.close()
 

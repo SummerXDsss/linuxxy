@@ -9,7 +9,7 @@ by [Maccy](https://github.com/p0deje/Maccy).
 - Python 3
 - GTK 3 and PyGObject (`python3-gi` on Debian/Ubuntu)
 - python-xlib (`python3-xlib` on Debian/Ubuntu)
-- XTEST X11 extension (normally installed with Xorg)
+- XTEST and RECORD X11 extensions (normally installed with Xorg)
 
 On Debian/Ubuntu, install the Python dependencies with:
 
@@ -52,6 +52,14 @@ Pinned entries get persistent letter shortcuts: **Ctrl+letter** copies,
 Click a row to choose it,
 or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
 **Alt+P** to pin and **Alt+Delete** to delete the selected entry.
+Pinned entries can be moved with **Alt+Up/Down** or the right-click menu;
+their letter shortcuts stay with each entry.
+Use **Ctrl+click** to select several results, or focus a result and press
+**Shift+Up/Down** to extend the selection. Click **Queue N** or press
+**Ctrl+Shift+Enter** to start a paste queue. The first item is copied; each
+subsequent **Ctrl+V** pastes the current item and prepares the next one.
+You can also add entries to the queue from the right-click menu. Choosing
+another item or copying new content cancels the queue.
 Use **Ctrl+Alt+Delete** to clear unpinned history or **Ctrl+Alt+Shift+Delete**
 to clear all history, including pinned entries. Clear unpinned history from the footer.
 Press **Space** on a selected result to preview its full text or image. A small
@@ -93,6 +101,8 @@ desktop when no other application has an active keyboard grab.
 The [format smoke test](tests/formats_smoke.py) verifies small and large HTML
 and file copying between separate X11 applications, checks content after exit
 when a clipboard manager is present, and restores the clipboard afterward.
+The [paste queue test](tests/paste_stack_smoke.py) selects three results in the
+real popup and verifies their order through three actual Ctrl+V pastes.
 The [history test](tests/history_behavior.py) verifies migration of older data,
 copy counts, sorting, and pin order.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy

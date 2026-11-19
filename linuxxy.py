@@ -7,6 +7,8 @@ import fcntl
 import hashlib
 import time
 from pathlib import Path
+from types import SimpleNamespace
+from Xlib.error import XError
 
 import gi
 
@@ -21,6 +23,7 @@ from settings import Settings
 from x11 import X11
 from x11_clipboard import X11Clipboard
 from search import snippet
+from paste_keys import PasteKeys
 
 
 class App:
@@ -39,6 +42,10 @@ class App:
         self.ignore_own_change_until = 0
         self.preview_id = None
         self.preview_auto = False
+        self.multi_selection = set()
+        self.paste_stack = []
+        self.paste_keys = None
+        self.paste_advance_id = None
 
         self.window = Gtk.Window(title="Linuxxy")
         self.window.set_default_size(440, 120)
@@ -69,6 +76,7 @@ class App:
         self.rows.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.rows.connect("row-activated", lambda _list, row: self.choose(row))
         self.rows.connect("row-selected", self.mark_selected)
+        self.rows.connect("key-press-event", self.on_key)
         scroll.add(self.rows)
         box.pack_start(Gtk.Separator(), False, False, 4)
         footer = Gtk.Box(spacing=6)
@@ -82,6 +90,12 @@ class App:
             button.set_relief(Gtk.ReliefStyle.NONE)
             button.connect("clicked", callback)
             footer.pack_start(button, False, False, 0)
+        self.queue_button = Gtk.Button(label="Queue")
+        self.queue_button.set_relief(Gtk.ReliefStyle.NONE)
+        self.queue_button.set_no_show_all(True)
+        self.queue_button.set_tooltip_text("Copy selected items in order, then press Ctrl+V for each")
+        self.queue_button.connect("clicked", self.start_paste_stack)
+        footer.pack_start(self.queue_button, False, False, 0)
         hint = Gtk.Label(label="↵ Copy  ·  Alt+↵ Paste")
         hint.set_xalign(1)
         footer.pack_end(hint, False, False, 4)
@@ -115,6 +129,7 @@ class App:
             #linuxxy-footer button { min-height: 20px; padding: 0 6px; font-size: 11px; }
             #linuxxy-footer label { color: #aaa; font-size: 11px; }
             #linuxxy-index { color: #aaa; font-size: 10px; min-width: 16px; }
+            box.linuxxy-multi-selected { background-color: #4d624b; border-radius: 5px; color: white; }
         """)
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
@@ -154,6 +169,8 @@ class App:
                 html = selection.get_data() if selection else None
             signature = ("rich", text, hashlib.sha256(html).digest()) if html else ("text", text)
         if signature != self.last_signature or force:
+            if signature != self.last_signature and self.paste_stack:
+                self.cancel_paste_stack()
             self.last_signature = signature
             if not self.paused:
                 if uris and self.settings.get("save_files"):
@@ -249,10 +266,12 @@ class App:
             if entry_id == selected_id:
                 restored = row
         self.rows.show_all()
+        self.multi_selection.intersection_update(row.entry_id for row in self.rows.get_children())
         if restored:
             self.rows.select_row(restored)
         elif self.rows.get_children():
             self.rows.select_row(self.rows.get_children()[0])
+        self.update_multi_selection()
         self.resize_popup(row_count, image_count)
 
     def resize_popup(self, count, image_count=0):
@@ -265,6 +284,11 @@ class App:
 
     def row_click(self, row, event):
         if event.button == 1:
+            if event.state & Gdk.ModifierType.CONTROL_MASK or (
+                    event.state & Gdk.ModifierType.SHIFT_MASK and
+                    not event.state & Gdk.ModifierType.MOD1_MASK):
+                self.extend_selection(row, bool(event.state & Gdk.ModifierType.SHIFT_MASK))
+                return True
             alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
             shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
             self.choose(row, paste=True if alt else None, plain=alt and shift)
@@ -273,13 +297,22 @@ class App:
             return False
         self.rows.select_row(row)
         menu = Gtk.Menu()
-        for label, callback in (("Paste", self.paste_selected),
-                                ("Copy", self.copy_selected),
-                                ("Preview", self.show_preview),
-                                ("Unpin" if row.pinned else "Pin", self.toggle_pin),
-                                ("Delete", self.delete_selected)):
+        actions = [("Paste", self.paste_selected),
+                   ("Copy", self.copy_selected),
+                   ("Remove from queue" if row.entry_id in self.multi_selection else "Add to queue",
+                    lambda: self.extend_selection(row, False)),
+                   ("Start paste queue", self.start_paste_stack),
+                   ("Preview", self.show_preview),
+                   ("Unpin" if row.pinned else "Pin", self.toggle_pin),
+                   ("Delete", self.delete_selected)]
+        if row.pinned and not self.search.get_text():
+            actions.insert(-1, ("Move pin up", lambda: self.move_pin(-1)))
+            actions.insert(-1, ("Move pin down", lambda: self.move_pin(1)))
+        for label, callback in actions:
             item = Gtk.MenuItem(label=label)
             item.connect("activate", lambda _item, fn=callback: fn())
+            if label == "Start paste queue":
+                item.set_sensitive(len(self.multi_selection) >= 2)
             menu.append(item)
         menu.show_all()
         menu.popup_at_pointer(event)
@@ -294,6 +327,30 @@ class App:
         if selected:
             selected.content.get_style_context().add_class("linuxxy-selected")
         self.schedule_preview()
+
+    def update_multi_selection(self):
+        for row in self.rows.get_children():
+            style = row.content.get_style_context()
+            if row.entry_id in self.multi_selection:
+                style.add_class("linuxxy-multi-selected")
+            else:
+                style.remove_class("linuxxy-multi-selected")
+        self.queue_button.set_label(f"Queue {len(self.multi_selection)}")
+        self.queue_button.set_visible(len(self.multi_selection) >= 2)
+
+    def extend_selection(self, row, shift):
+        rows = self.rows.get_children()
+        if shift:
+            anchor = self.selected() or row
+            first, last = sorted((rows.index(anchor), rows.index(row)))
+            self.multi_selection.update(item.entry_id for item in rows[first:last + 1])
+        elif row.entry_id in self.multi_selection:
+            self.multi_selection.remove(row.entry_id)
+        else:
+            self.multi_selection.add(row.entry_id)
+        self.rows.select_row(row)
+        row.grab_focus()
+        self.update_multi_selection()
 
     def cancel_preview(self):
         if self.preview_id and GLib.MainContext.default().find_source_by_id(self.preview_id):
@@ -322,10 +379,23 @@ class App:
             self.show_preview(automatic=True)
         return False
 
-    def choose(self, row, paste=None, plain=False):
+    def choose(self, row, paste=None, plain=False, cancel_stack=True):
         self.cancel_preview()
+        if cancel_stack:
+            self.cancel_paste_stack()
         if paste is None:
             paste = self.settings.get("paste_by_default")
+        self.copy_entry(row, plain)
+        self.window.hide()
+        self.search.set_text("")
+        self.multi_selection.clear()
+        self.refresh()
+        if paste and self.x11 and self.return_window:
+            self.x11.activate(self.return_window)
+            self.paste_attempts = 0
+            GLib.timeout_add(50, self.delayed_paste)
+
+    def copy_entry(self, row, plain=False):
         if plain and row.kind == "rich":
             self.ignore_own_change_until = time.monotonic() + 0.5
             self.clipboard.set_text(row.value, -1)
@@ -362,13 +432,58 @@ class App:
                 self.history.add(row.value)
         if not (row.kind in ("files", "rich") and self.rich_clipboard):
             self.clipboard.store()
-        self.window.hide()
-        self.search.set_text("")
-        self.refresh()
-        if paste and self.x11 and self.return_window:
-            self.x11.activate(self.return_window)
-            self.paste_attempts = 0
-            GLib.timeout_add(50, self.delayed_paste)
+
+    def start_paste_stack(self, *_):
+        selected = [row for row in self.rows.get_children()
+                    if row.entry_id in self.multi_selection]
+        if len(selected) < 2:
+            return
+        self.cancel_paste_stack()
+        try:
+            if not self.paste_keys:
+                self.paste_keys = PasteKeys(self.advance_paste_stack)
+        except (RuntimeError, OSError, XError) as error:
+            alert = Gtk.MessageDialog(transient_for=self.window, modal=True,
+                                      message_type=Gtk.MessageType.ERROR,
+                                      buttons=Gtk.ButtonsType.CLOSE,
+                                      text=f"Paste queue unavailable: {error}")
+            alert.run()
+            alert.destroy()
+            return
+        items = [(row.value, row.kind, row.data) for row in selected]
+        self.choose(selected[0], paste=False, cancel_stack=False)
+        self.paste_stack = items
+        self.tray.set_tooltip_text(f"Linuxxy ({len(items)} items in paste queue)")
+
+    def advance_paste_stack(self):
+        if not self.paste_stack or self.paste_advance_id:
+            return False
+        # X11 paste targets may request the selection after the key release.
+        self.paste_advance_id = GLib.timeout_add(250, self._finish_paste_advance)
+        return False
+
+    def _finish_paste_advance(self):
+        self.paste_advance_id = None
+        if not self.paste_stack:
+            return False
+        self.paste_stack.pop(0)
+        if self.paste_stack:
+            value, kind, data = self.paste_stack[0]
+            self.copy_entry(SimpleNamespace(value=value, kind=kind, data=data))
+            self.tray.set_tooltip_text(f"Linuxxy ({len(self.paste_stack)} items in paste queue)")
+        else:
+            self.cancel_paste_stack()
+        return False
+
+    def cancel_paste_stack(self):
+        if self.paste_advance_id:
+            GLib.source_remove(self.paste_advance_id)
+            self.paste_advance_id = None
+        self.paste_stack.clear()
+        if self.paste_keys:
+            self.paste_keys.close()
+            self.paste_keys = None
+        self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
 
     def delayed_paste(self):
         self.paste_attempts += 1
@@ -392,6 +507,12 @@ class App:
             self.history.pin(row.entry_id, not row.pinned)
             self.refresh()
 
+    def move_pin(self, step):
+        row = self.selected()
+        if row and row.pinned and not self.search.get_text():
+            self.history.move_pin(row.entry_id, step)
+            self.refresh()
+
     def delete_selected(self, *_):
         if row := self.selected():
             self.history.delete(row.entry_id)
@@ -405,6 +526,19 @@ class App:
         ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
         shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
+        if alt and event.keyval in (Gdk.KEY_Up, Gdk.KEY_Down):
+            self.move_pin(-1 if event.keyval == Gdk.KEY_Up else 1)
+            return True
+        if shift and not ctrl and event.keyval in (Gdk.KEY_Up, Gdk.KEY_Down):
+            rows = self.rows.get_children()
+            selected = self.selected()
+            if rows and selected:
+                index = rows.index(selected) + (1 if event.keyval == Gdk.KEY_Down else -1)
+                self.extend_selection(rows[max(0, min(len(rows) - 1, index))], True)
+            return True
+        if ctrl and shift and event.keyval == Gdk.KEY_Return:
+            self.start_paste_stack()
+            return True
         if ctrl or alt:
             digit = Gdk.keyval_name(event.keyval)
             if digit and digit in "123456789":
@@ -460,6 +594,8 @@ class App:
                 return self.on_key(self.window, event)
         if event.keyval == Gdk.KEY_Return:
             return self.on_key(self.window, event)
+        if event.keyval in (Gdk.KEY_Up, Gdk.KEY_Down) and event.state & Gdk.ModifierType.SHIFT_MASK:
+            return self.on_key(self.window, event)
         if event.keyval == Gdk.KEY_Down:
             first = next(iter(self.rows.get_children()), None)
             if first:
@@ -498,6 +634,7 @@ class App:
     def tray_menu(self, _icon, button, activate_time):
         menu = Gtk.Menu()
         for label, callback in (("Open", self.toggle_window),
+                                ("Cancel paste queue", self.cancel_paste_stack),
                                 ("Preferences…", self.show_settings),
                                 ("Resume monitoring" if self.paused else "Pause monitoring", self.toggle_pause),
                                 ("Quit", self.quit)):
@@ -743,6 +880,7 @@ class App:
             return
         self.closed = True
         self.cancel_preview()
+        self.cancel_paste_stack()
         self.clipboard.disconnect(self.clipboard_handler)
         if GLib.MainContext.default().find_source_by_id(self.poll_id):
             GLib.source_remove(self.poll_id)

@@ -142,6 +142,20 @@ class History:
             self.db.execute("UPDATE entries SET pinned=?, pin_order=?, pin_key=? WHERE id=?",
                             (int(pinned), next_order if pinned else None, key, entry_id))
 
+    def move_pin(self, entry_id: int, step: int):
+        pins = self.db.execute(
+            "SELECT id, pin_order FROM entries WHERE pinned=1 ORDER BY pin_order, id"
+        ).fetchall()
+        position = next((index for index, pin in enumerate(pins) if pin[0] == entry_id), None)
+        if position is None or not 0 <= position + step < len(pins):
+            return False
+        other_id, other_order = pins[position + step]
+        own_order = pins[position][1]
+        with self.db:
+            self.db.execute("UPDATE entries SET pin_order=? WHERE id=?", (other_order, entry_id))
+            self.db.execute("UPDATE entries SET pin_order=? WHERE id=?", (own_order, other_id))
+        return True
+
     def delete(self, entry_id: int):
         with self.db:
             self.db.execute("DELETE FROM entries WHERE id=?", (entry_id,))
