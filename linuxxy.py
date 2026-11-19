@@ -69,7 +69,12 @@ class App:
         self.title_label = Gtk.Label(label="Linuxxy")
         self.title_label.set_name("linuxxy-title")
         self.title_label.set_no_show_all(True)
-        self.search_line.pack_start(self.title_label, False, False, 5)
+        self.title_handle = Gtk.EventBox()
+        self.title_handle.set_no_show_all(True)
+        self.title_handle.set_tooltip_text("Drag to move popup")
+        self.title_handle.add(self.title_label)
+        self.title_handle.connect("button-press-event", self.drag_title)
+        self.search_line.pack_start(self.title_handle, False, False, 5)
         self.search = Gtk.SearchEntry()
         self.search.set_name("linuxxy-search")
         self.search.set_no_show_all(True)
@@ -165,6 +170,7 @@ class App:
         was_focused = self.search.is_focus()
         self.search.set_visible(visible)
         self.title_label.set_visible(self.settings.get("show_title"))
+        self.title_handle.set_visible(self.settings.get("show_title"))
         header_visible = visible or self.settings.get("show_title")
         self.search_line.set_visible(header_visible)
         self.search_separator.set_visible(header_visible)
@@ -358,7 +364,8 @@ class App:
             height -= 14
         if not self.settings.get("show_footer"):
             height -= 26
-        self.window.resize(440, min(height, 470))
+        self.popup_size = (440, min(height, 470))
+        self.window.resize(*self.popup_size)
 
     def row_click(self, row, event):
         if event.button == 1:
@@ -806,9 +813,56 @@ class App:
 
     def hide_window(self, *_):
         self.cancel_preview()
+        if self.window.get_visible():
+            x, y = self.window.get_position()
+            self.settings.set("popup_last_position", [x, y])
         self.window.hide()
         self.search.set_text("")
         return True
+
+    def drag_title(self, _widget, event):
+        if event.button == 1:
+            self.window.begin_move_drag(event.button, int(event.x_root), int(event.y_root),
+                                        event.time)
+            return True
+        return False
+
+    def position_popup(self):
+        display = Gdk.Display.get_default()
+        _screen, pointer_x, pointer_y, _mods = display.get_pointer()
+        mode = self.settings.get("popup_position")
+        width, height = self.popup_size
+        anchor_x, anchor_y = pointer_x, pointer_y
+        x, y = pointer_x, pointer_y
+        tray_rectangle = None
+        if mode in ("active_window", "screen_center") and self.x11:
+            bounds = self.x11.window_bounds(self.return_window)
+            if bounds:
+                anchor_x = bounds[0] + bounds[2] // 2
+                anchor_y = bounds[1] + bounds[3] // 2
+                if mode == "active_window":
+                    x = anchor_x - width // 2
+                    y = anchor_y - height // 2
+        if mode == "status_icon":
+            available, _screen, rectangle, _orientation = self.tray.get_geometry()
+            if available and rectangle.width > 4 and rectangle.height > 4:
+                tray_rectangle = rectangle
+                anchor_x, anchor_y = rectangle.x, rectangle.y
+                x, y = rectangle.x, rectangle.y + rectangle.height
+        elif mode == "last_position" and self.settings.get("popup_last_position"):
+            x, y = self.settings.get("popup_last_position")
+            anchor_x, anchor_y = x, y
+        monitor = display.get_monitor_at_point(anchor_x, anchor_y)
+        work = monitor.get_workarea()
+        if tray_rectangle and y + height > work.y + work.height:
+            y = tray_rectangle.y - height
+        if mode == "screen_center":
+            x = work.x + (work.width - width) // 2
+            y = work.y + (work.height - height) // 2
+        x = max(work.x, min(x, work.x + work.width - width))
+        y = max(work.y, min(y, work.y + work.height - height))
+        self.window.move(x, y)
+        return x, y
 
     def toggle_window(self, event_time=Gdk.CURRENT_TIME):
         if self.window.get_visible():
@@ -817,15 +871,7 @@ class App:
             if self.x11:
                 self.return_window = self.x11.active_window()
             self.refresh()
-            if self.settings.get("popup_at_cursor"):
-                display = Gdk.Display.get_default()
-                _screen, x, y, _mods = display.get_pointer()
-                monitor = display.get_monitor_at_point(x, y)
-                work = monitor.get_workarea()
-                width, height = self.window.get_size()
-                x = max(work.x, min(x, work.x + work.width - width))
-                y = max(work.y, min(y, work.y + work.height - height))
-                self.window.move(x, y)
+            self.position_popup()
             self.window.show_all()
             self.window.present_with_time(event_time)
             if self.search.get_visible():
@@ -927,9 +973,14 @@ class App:
         image_height = Gtk.SpinButton.new_with_range(1, 200, 1)
         image_height.set_value(self.settings.get("image_max_height"))
         field(grids["Appearance"], 1, "Image thumbnail height", image_height)
-        position = Gtk.CheckButton(label="Open near pointer")
-        position.set_active(self.settings.get("popup_at_cursor"))
-        grids["Appearance"].attach(position, 0, 2, 2, 1)
+        position = Gtk.ComboBoxText()
+        for key, label in (("cursor", "Near pointer"), ("status_icon", "At tray icon"),
+                           ("active_window", "Center of active window"),
+                           ("screen_center", "Center of screen"),
+                           ("last_position", "Last position")):
+            position.append(key, label)
+        position.set_active_id(self.settings.get("popup_position"))
+        field(grids["Appearance"], 2, "Open popup", position)
         show_footer = Gtk.CheckButton(label="Show footer")
         show_footer.set_active(self.settings.get("show_footer"))
         grids["Appearance"].attach(show_footer, 0, 3, 2, 1)
@@ -1014,7 +1065,7 @@ class App:
                 ("search_mode", search_mode.get_active_id()),
                 ("sort_by", sort_by.get_active_id()),
                 ("pins_position", pins_position.get_active_id()),
-                ("popup_at_cursor", position.get_active()),
+                ("popup_position", position.get_active_id()),
                 ("show_footer", show_footer.get_active()),
                 ("open_preview_automatically", auto_preview.get_active()),
                 ("preview_delay_ms", preview_delay.get_value_as_int()),
@@ -1121,6 +1172,8 @@ class App:
         if self.closed:
             return
         self.closed = True
+        if self.window.get_visible():
+            self.settings.set("popup_last_position", list(self.window.get_position()))
         self.cancel_preview()
         self.cancel_paste_stack()
         self.clipboard.disconnect(self.clipboard_handler)

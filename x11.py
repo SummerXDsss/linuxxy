@@ -84,6 +84,17 @@ class X11:
                     break
         return None
 
+    def window_bounds(self, window_id):
+        if window_id is None:
+            return None
+        try:
+            window = self.display.create_resource_object("window", window_id)
+            geometry = window.get_geometry()
+            root_position = self.root.translate_coords(window, 0, 0)
+            return (root_position.x, root_position.y, geometry.width, geometry.height)
+        except XError:
+            return None
+
     def activate(self, window_id):
         if window_id is None:
             return

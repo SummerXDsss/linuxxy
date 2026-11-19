@@ -12,7 +12,8 @@ DEFAULTS = {
     "history_size": 200,
     "check_interval_ms": 500,
     "clear_on_quit": False,
-    "popup_at_cursor": True,
+    "popup_position": "cursor",
+    "popup_last_position": None,
     "launch_at_login": False,
     "search_mode": "exact",
     "sort_by": "last_copied",
@@ -48,6 +49,10 @@ class Settings:
                             self.set(key, value, save=False)
                         except ValueError:
                             pass
+                if "popup_position" not in data and type(data.get("popup_at_cursor")) is bool:
+                    self.values["popup_position"] = (
+                        "cursor" if data["popup_at_cursor"] else "screen_center"
+                    )
         except (FileNotFoundError, ValueError, OSError, TypeError):
             pass
 
@@ -75,6 +80,14 @@ class Settings:
         elif key == "search_visibility":
             if value not in ("always", "during_search"):
                 raise ValueError("Invalid search visibility")
+        elif key == "popup_position":
+            if value not in ("cursor", "status_icon", "active_window", "screen_center",
+                             "last_position"):
+                raise ValueError("Invalid popup position")
+        elif key == "popup_last_position":
+            if value is not None and (type(value) is not list or len(value) != 2 or
+                                      any(type(coordinate) is not int for coordinate in value)):
+                raise ValueError("Invalid last popup position")
         elif key == "image_max_height":
             if type(value) is not int or not 1 <= value <= 200:
                 raise ValueError("Invalid image height")

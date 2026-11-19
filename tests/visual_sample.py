@@ -91,15 +91,21 @@ with tempfile.TemporaryDirectory() as directory:
                                        if isinstance(widget, Gtk.ComboBoxText))
                     search_mode.set_active_id('during_search')
                     search_toggle.set_active(False)
+                    popup_position = next(widget for widget in appearance.get_children()
+                                          if isinstance(widget, Gtk.ComboBoxText) and
+                                          widget.get_active_id() == 'cursor')
+                    popup_position.set_active_id('screen_center')
                     buttons = app.preferences.get_child().get_children()[-1]
                     save = next(widget for widget in buttons.get_children()
                                 if isinstance(widget, Gtk.Button) and widget.get_label() == 'Save')
                     save.clicked()
                     assert app.settings.get('search_visibility') == 'during_search'
                     assert app.settings.get('show_search_field') is False
+                    assert app.settings.get('popup_position') == 'screen_center'
                     persisted = Settings()
                     assert persisted.get('search_visibility') == 'during_search'
                     assert persisted.get('show_search_field') is False
+                    assert persisted.get('popup_position') == 'screen_center'
                     app.quit()
                 return False
             GLib.timeout_add(150, take)

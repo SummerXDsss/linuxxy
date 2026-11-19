@@ -74,13 +74,15 @@ the popup is open. General, Storage, and Appearance pages cover the opening
 shortcut, default paste and formatting behavior, text/image/file capture, history
 limit, clipboard check interval, history sorting (last copied, first copied, or most copied),
 search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
-underline, or color), pinned item position, popup position, automatic preview
+underline, or color), pinned item position, popup position (pointer, tray icon,
+active window, screen center, or last position), automatic preview
 and its delay, image thumbnail height, hex color swatches, visible whitespace
 symbols, search field visibility (always, while typing, or hidden), footer
 visibility, an optional title before the search field, optional source application
 icons, clear-on-quit behavior, and launch
 at login. When the search field is hidden, typing still filters the history;
 Backspace removes the last character.
+Drag the popup's title to move it; the last-position option reopens it there.
 Preferences are saved in
 `$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Source icons use the copying window's X11 application class and the matching
@@ -126,6 +128,9 @@ The [history test](tests/history_behavior.py) verifies migration of older data,
 copy counts, sorting, and pin order.
 The [application icon test](tests/app_icon_smoke.py) copies from a real X11 window,
 checks its saved source, and captures the popup with the matching desktop icon.
+The [popup position test](tests/popup_position_smoke.py) measures and captures
+the popup at each position in a real X11 session. Without a tray host, the tray
+position falls back to the pointer.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy
 ranking, and snippets that keep later matches visible.
 The [install test](tests/install_smoke.py) checks a temporary user installation,
