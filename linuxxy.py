@@ -37,6 +37,25 @@ TRAY_ICONS = {
 }
 
 
+class RowCollection:
+    """Present the fixed pin list and scrolling history as one ordered list."""
+
+    def __init__(self, app):
+        self.app = app
+
+    def get_children(self):
+        pins = self.app.pin_rows.get_children()
+        history = self.app.history_rows.get_children()
+        return pins + history if self.app.settings.get("pins_position") == "top" else history + pins
+
+    def get_selected_row(self):
+        return self.app.pin_rows.get_selected_row() or self.app.history_rows.get_selected_row()
+
+    def select_row(self, row):
+        if row is not None:
+            row.get_parent().select_row(row)
+
+
 class App:
     def __init__(self):
         self.settings = Settings()
@@ -61,7 +80,10 @@ class App:
         self.preview_divider_width = 7
         self.preview_drag = None
         self.preview_move_id = None
+        self.preview_resize_id = None
         self.pending_popup_origin = None
+        self.hover_poll_id = None
+        self.last_pointer_position = None
         self.multi_selection = set()
         self.paste_stack = []
         self.paste_keys = None
@@ -120,18 +142,22 @@ class App:
         self.search_separator = Gtk.Separator()
         self.search_separator.set_no_show_all(True)
         box.pack_start(self.search_separator, False, False, 4)
-        scroll = Gtk.ScrolledWindow()
-        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        box.pack_start(scroll, True, True, 0)
-        self.rows = Gtk.ListBox()
-        self.rows.set_name("linuxxy-list")
-        self.rows.set_selection_mode(Gtk.SelectionMode.SINGLE)
-        self.rows.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
-        self.rows.connect("motion-notify-event", self.list_motion)
-        self.rows.connect("row-activated", lambda _list, row: self.choose(row))
-        self.rows.connect("row-selected", self.mark_selected)
-        self.rows.connect("key-press-event", self.on_key)
-        scroll.add(self.rows)
+        self.history_scroll = Gtk.ScrolledWindow()
+        self.history_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        box.pack_start(self.history_scroll, True, True, 0)
+        self.pin_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.pin_container.set_no_show_all(True)
+        box.pack_start(self.pin_container, False, False, 0)
+        self.pin_separator = Gtk.Separator()
+        self.pin_rows = self.make_list()
+        self.pin_scroll = Gtk.ScrolledWindow()
+        self.pin_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.pin_scroll.add(self.pin_rows)
+        self.history_rows = self.make_list()
+        self.history_scroll.add(self.history_rows)
+        self.rows = RowCollection(self)
+        self.rebuilding_rows = False
+        self.syncing_selection = False
         box.pack_start(Gtk.Separator(), False, False, 4)
         footer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         footer.set_name("linuxxy-footer")
@@ -219,6 +245,17 @@ class App:
                 print(f"Global shortcut unavailable: {error}")
         self.capture()
         self.refresh()
+
+    def make_list(self):
+        rows = Gtk.ListBox()
+        rows.set_name("linuxxy-list")
+        rows.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        rows.add_events(Gdk.EventMask.POINTER_MOTION_MASK)
+        rows.connect("motion-notify-event", self.list_motion)
+        rows.connect("row-activated", lambda _list, row: self.choose(row))
+        rows.connect("row-selected", self.mark_selected)
+        rows.connect("key-press-event", self.on_key)
+        return rows
 
     def install_style(self):
         provider = Gtk.CssProvider()
@@ -339,12 +376,15 @@ class App:
     def refresh(self):
         selected = self.selected()
         selected_id = selected.entry_id if selected else None
-        for child in self.rows.get_children():
-            self.rows.remove(child)
+        self.rebuilding_rows = True
+        for listbox in (self.pin_rows, self.history_rows):
+            for child in listbox.get_children():
+                listbox.remove(child)
         restored = None
-        previous_pin = None
         row_count = 0
         image_count = 0
+        pin_count = 0
+        pin_image_count = 0
         for index, (entry_id, value, pinned, kind, data, pin_key, matches, shown, source_app) in enumerate(self.history.list(
             self.search.get_text(), self.settings.get("search_mode"),
             self.settings.get("pins_position"), self.settings.get("sort_by")
@@ -354,10 +394,11 @@ class App:
             row.entry_id, row.value, row.pinned = entry_id, value, bool(pinned)
             row.kind, row.data = kind, data
             row.pin_key = pin_key
+            row.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK |
+                           Gdk.EventMask.POINTER_MOTION_MASK)
+            row.connect("enter-notify-event", self.row_motion)
+            row.connect("motion-notify-event", self.row_motion)
             row.connect("button-press-event", self.row_click)
-            if previous_pin is not None and previous_pin != pinned:
-                row.set_header(Gtk.Separator())
-            previous_pin = pinned
             if kind == "image" and data:
                 loader = GdkPixbuf.PixbufLoader.new_with_type("png")
                 loader.write(data)
@@ -435,17 +476,39 @@ class App:
                 if pin_key:
                     badge.set_tooltip_text(f"Ctrl+{pin_key.upper()} copy · Alt+{pin_key.upper()} paste")
             row.add(content)
-            self.rows.add(row)
+            (self.pin_rows if pinned else self.history_rows).add(row)
+            pin_count += bool(pinned)
+            pin_image_count += bool(pinned and kind == "image")
             row_count += 1
             if entry_id == selected_id:
                 restored = row
-        self.rows.show_all()
+        for child in self.pin_container.get_children():
+            self.pin_container.remove(child)
+        if self.settings.get("pins_position") == "top":
+            self.pin_container.pack_start(self.pin_scroll, False, False, 0)
+            self.pin_container.pack_start(self.pin_separator, False, False, 4)
+            self.main_column.reorder_child(self.pin_container, 2)
+        else:
+            self.pin_container.pack_start(self.pin_separator, False, False, 4)
+            self.pin_container.pack_start(self.pin_scroll, False, False, 0)
+            self.main_column.reorder_child(self.pin_container, 3)
+        self.pin_separator.set_visible(pin_count > 0 and row_count > pin_count)
+        self.pin_rows.show_all()
+        self.pin_scroll.show()
+        self.history_rows.show_all()
+        if pin_count:
+            self.pin_container.show()
+        else:
+            self.pin_container.hide()
+        self.rebuilding_rows = False
         self.multi_selection.intersection_update(row.entry_id for row in self.rows.get_children())
         if restored:
             self.rows.select_row(restored)
         elif self.rows.get_children():
             self.rows.select_row(self.rows.get_children()[0])
         self.update_multi_selection()
+        self.pin_count = pin_count
+        self.pin_image_count = pin_image_count
         self.resize_popup(row_count, image_count)
         self.update_tray()
 
@@ -469,6 +532,8 @@ class App:
                    display.get_monitor_at_point(pointer_x, pointer_y))
         work = monitor.get_workarea()
         height_limit = min(self.settings.get("popup_max_height"), max(120, work.height - 20))
+        pin_height = self.pin_count * 40 + self.pin_image_count * image_extra
+        self.pin_scroll.set_size_request(-1, min(pin_height, max(40, int(height_limit * .4))))
         self.popup_size = (self.content_width, min(height, height_limit))
         if self.preview is not None:
             self.layout_preview()
@@ -476,10 +541,49 @@ class App:
             self.window.resize(*self.popup_size)
 
     def list_motion(self, _list, event):
-        row = self.rows.get_row_at_y(int(event.y))
+        row = _list.get_row_at_y(int(event.y))
         if row is not None and self.window.get_visible() and self.selected() is not row:
             self.rows.select_row(row)
         return False
+
+    def row_motion(self, row, _event):
+        if self.window.get_visible() and self.selected() is not row:
+            self.rows.select_row(row)
+        return False
+
+    def poll_hover(self):
+        if not self.window.get_visible():
+            self.hover_poll_id = None
+            return False
+        display = Gdk.Display.get_default()
+        _screen, x, y, _mods = display.get_pointer()
+        if (x, y) == self.last_pointer_position:
+            return True
+        self.last_pointer_position = (x, y)
+        _ok, origin_x, origin_y = self.window.get_window().get_origin()
+        local_x, local_y = x - origin_x, y - origin_y
+        for listbox in (self.pin_rows, self.history_rows):
+            if not listbox.get_visible() or not listbox.get_mapped():
+                continue
+            viewport = self.history_scroll if listbox is self.history_rows else self.pin_scroll
+            viewport_point = viewport.translate_coordinates(self.window, 0, 0)
+            if viewport_point is None:
+                continue
+            viewport_x, viewport_y = viewport_point
+            if not (viewport_x <= local_x < viewport_x + viewport.get_allocated_width() and
+                    viewport_y <= local_y < viewport_y + viewport.get_allocated_height()):
+                continue
+            point = listbox.translate_coordinates(self.window, 0, 0)
+            if point is None:
+                continue
+            left, top = point
+            if left <= local_x < left + listbox.get_allocated_width() and \
+                    top <= local_y < top + listbox.get_allocated_height():
+                row = listbox.get_row_at_y(local_y - top)
+                if row is not None and row is not self.selected():
+                    self.rows.select_row(row)
+                break
+        return True
 
     def row_click(self, row, event):
         if event.button == 1:
@@ -522,6 +626,13 @@ class App:
         return self.rows.get_selected_row()
 
     def mark_selected(self, _list, selected):
+        if self.rebuilding_rows or self.syncing_selection:
+            return
+        if selected:
+            self.syncing_selection = True
+            (self.history_rows if _list is self.pin_rows else self.pin_rows).unselect_all()
+            self.syncing_selection = False
+        selected = self.selected()
         for row in self.rows.get_children():
             row.content.get_style_context().remove_class("linuxxy-selected")
         if selected:
@@ -553,6 +664,9 @@ class App:
         self.update_multi_selection()
 
     def cancel_preview(self):
+        if self.preview_resize_id is not None:
+            GLib.source_remove(self.preview_resize_id)
+            self.preview_resize_id = None
         if self.preview_id and GLib.MainContext.default().find_source_by_id(self.preview_id):
             GLib.source_remove(self.preview_id)
         self.preview_id = None
@@ -575,9 +689,11 @@ class App:
             self.preview_move_id = GLib.timeout_add(60, self.finish_preview_move)
 
     def finish_preview_move(self):
-        self.preview_move_id = None
         if self.window.get_visible() and self.preview is None and self.pending_popup_origin:
+            if self.window.get_size()[0] > self.content_width + 2:
+                return True
             self.window.move(*self.pending_popup_origin)
+        self.preview_move_id = None
         self.pending_popup_origin = None
         return False
 
@@ -908,6 +1024,16 @@ class App:
         ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
         shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
+        if event.keyval in (Gdk.KEY_Up, Gdk.KEY_Down) and not (ctrl or alt or shift) and \
+                not self.search.is_focus():
+            rows = self.rows.get_children()
+            if rows:
+                current = self.selected()
+                index = rows.index(current) if current in rows else -1
+                index = max(0, min(len(rows) - 1, index + (1 if event.keyval == Gdk.KEY_Down else -1)))
+                self.rows.select_row(rows[index])
+                rows[index].grab_focus()
+            return True
         if not self.search.get_visible() and self.window.get_visible():
             if event.keyval == Gdk.KEY_BackSpace and self.search.get_text():
                 self.search.set_text(self.search.get_text()[:-1])
@@ -1007,6 +1133,9 @@ class App:
         return False
 
     def hide_window(self, *_):
+        if self.hover_poll_id is not None:
+            GLib.source_remove(self.hover_poll_id)
+            self.hover_poll_id = None
         self.reset_shortcut_cycle()
         self.cancel_preview()
         self.remember_popup_position()
@@ -1117,6 +1246,11 @@ class App:
             self.position_popup()
             self.window.show_all()
             self.window.present_with_time(event_time)
+            display = Gdk.Display.get_default()
+            _screen, x, y, _mods = display.get_pointer()
+            self.last_pointer_position = (x, y)
+            if self.hover_poll_id is None:
+                self.hover_poll_id = GLib.timeout_add(60, self.poll_hover)
             if self.search.get_visible():
                 self.search.grab_focus()
             elif self.selected():
@@ -1621,9 +1755,21 @@ class App:
             child.show_all()
         self.preview_pane.show()
         self.preview_divider.show()
+        self.window.queue_resize()
         self.window.resize(self.content_width + self.preview_divider_width + width,
                            max(self.popup_size[1], 360))
+        if self.preview_resize_id is not None:
+            GLib.source_remove(self.preview_resize_id)
+        self.preview_resize_id = GLib.timeout_add(200, self.finish_preview_resize)
         self.window.move(origin, y)
+
+    def finish_preview_resize(self):
+        self.preview_resize_id = None
+        if self.preview is not None:
+            self.window.queue_resize()
+            self.window.resize(self.content_width + self.preview_divider_width + self.preview_width,
+                               max(self.popup_size[1], 360))
+        return False
 
     def preview_divider_realize(self, widget):
         widget.get_window().set_cursor(Gdk.Cursor.new(Gdk.CursorType.SB_H_DOUBLE_ARROW))

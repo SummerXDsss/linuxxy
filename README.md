@@ -62,6 +62,9 @@ or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
 can be changed or cleared in General settings.
 Pinned entries can be moved with **Alt+Up/Down** or the right-click menu;
 their letter shortcuts stay with each entry.
+Pinned entries stay visible above or below the scrolling history, as chosen in
+Appearance settings. If many items are pinned, their section scrolls within the
+popup height limit. Arrow keys and Shift+arrow keys move across both sections.
 Press **F2** or choose **Edit…** from the right-click menu to change an item's
 display name, text content, or pinned letter shortcut. Changing formatted text
 content converts that item to plain text; changing only its display name keeps
@@ -170,6 +173,9 @@ icon style, checks the recent-copy text, and opens the popup with the icon hidde
 The [footer menu test](tests/footer_menu_smoke.py) clicks the menu rows with real
 X11 pointer events, captures About and both clear confirmations, and checks the
 quit shortcut.
+The [fixed pins test](tests/sticky_pins_smoke.py) scrolls a long real popup with
+pins at the top and bottom, checks their screen positions and height limit,
+and moves selection across the two sections with arrow keys.
 The [shortcut behavior test](tests/action_shortcuts_behavior.py) checks validation,
 conflicts, disabled keys, and persistence.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy

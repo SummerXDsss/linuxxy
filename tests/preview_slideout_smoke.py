@@ -60,7 +60,7 @@ try:
             activate(popup)
             pump(.1)
             keys('Control_L', 'space')
-            pump()
+            pump(.8)
             assert app.preview is app.preview_pane and app.preview_side == 'right'
             assert app.selected().kind == 'image'
             assert app.window.get_size()[0] > 440
@@ -156,9 +156,9 @@ try:
             screenshot(popup, 'ui_preview_image_left.png')
             main_x = app.window.get_position()[0] + app.preview_width + app.preview_divider_width
             keys('Control_L', 'space')
-            pump()
+            pump(.8)
             assert app.preview is None
-            assert abs(app.window.get_position()[0] - main_x) <= 4
+            assert abs(app.window.get_position()[0] - main_x) <= 4, (app.window.get_position(), main_x)
             print('Preview slideout, selection updates, and both placements passed')
         finally:
             app.quit()
