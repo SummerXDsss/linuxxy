@@ -215,7 +215,7 @@ class App:
         if event.keyval == Gdk.KEY_Delete and event.state & Gdk.ModifierType.MOD1_MASK:
             self.delete_selected()
             return True
-        if event.keyval == Gdk.KEY_space and self.selected():
+        if event.keyval == Gdk.KEY_space and self.selected() and not self.search.is_focus():
             self.show_preview()
             return True
         if event.keyval == Gdk.KEY_Return:
@@ -437,4 +437,6 @@ if __name__ == "__main__":
         raise SystemExit(1)
     app = App()
     signal.signal(signal.SIGINT, lambda *_: app.quit())
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM,
+                         lambda *_: (app.quit(), False)[1])
     Gtk.main()
