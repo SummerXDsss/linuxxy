@@ -77,10 +77,14 @@ search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
 underline, or color), pinned item position, popup position, automatic preview
 and its delay, image thumbnail height, hex color swatches, visible whitespace
 symbols, search field visibility (always, while typing, or hidden), footer
-visibility, clear-on-quit behavior, and launch at login. When the search field
-is hidden, typing still filters the history; Backspace removes the last character.
+visibility, optional source application icons, clear-on-quit behavior, and launch
+at login. When the search field is hidden, typing still filters the history;
+Backspace removes the last character.
 Preferences are saved in
 `$XDG_CONFIG_HOME/linuxxy/settings.json`.
+Source icons use the copying window's X11 application class and the matching
+installed desktop icon. If the desktop does not identify the copying application,
+the history item has no source icon.
 Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.
 
 History is stored in an unencrypted SQLite database at
@@ -119,6 +123,8 @@ The [search visibility test](tests/search_visibility_smoke.py) opens the real
 popup in both hidden-field modes and searches with keyboard input.
 The [history test](tests/history_behavior.py) verifies migration of older data,
 copy counts, sorting, and pin order.
+The [application icon test](tests/app_icon_smoke.py) copies from a real X11 window,
+checks its saved source, and captures the popup with the matching desktop icon.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy
 ranking, and snippets that keep later matches visible.
 The [install test](tests/install_smoke.py) checks a temporary user installation,

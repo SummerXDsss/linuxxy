@@ -7,6 +7,8 @@ gi.require_version('GdkX11', '3.0')
 from gi.repository import Gtk, GdkX11, GLib
 
 window = Gtk.Window(title='Linuxxy paste target')
+if os.environ.get('LINUXXY_TEST_WM_CLASS'):
+    window.set_wmclass('linuxxy-test-source', os.environ['LINUXXY_TEST_WM_CLASS'])
 window.set_default_size(440, 100)
 entry = Gtk.Entry()
 entry.set_text('hello linuxxy clipboard')

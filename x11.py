@@ -1,6 +1,7 @@
 """X11 global shortcut, active-window restoration, and synthetic paste."""
 
 from Xlib import X, XK, Xatom, display, protocol
+from Xlib.error import XError
 from Xlib.ext import xtest
 from gi.repository import GLib
 
@@ -61,6 +62,27 @@ class X11:
         atom = self.display.intern_atom("_NET_ACTIVE_WINDOW")
         prop = self.root.get_full_property(atom, Xatom.WINDOW)
         return int(prop.value[0]) if prop and len(prop.value) else None
+
+    def clipboard_source_app(self):
+        """Return the WM_CLASS of the clipboard owner or current application."""
+        owner = self.display.get_selection_owner(self.display.intern_atom("CLIPBOARD"))
+        for candidate in (owner, self.active_window()):
+            if candidate is None:
+                continue
+            window = (self.display.create_resource_object("window", candidate)
+                      if isinstance(candidate, int) else candidate)
+            for _ in range(8):
+                try:
+                    wm_class = window.get_wm_class()
+                    if wm_class:
+                        return wm_class[-1]
+                    parent = window.query_tree().parent
+                    if parent.id == self.root.id:
+                        break
+                    window = parent
+                except (XError, AttributeError):
+                    break
+        return None
 
     def activate(self, window_id):
         if window_id is None:

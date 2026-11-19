@@ -21,7 +21,8 @@ with tempfile.TemporaryDirectory() as directory:
     history = History(path)
     try:
         history.add('old')
-        history.add('third')
+        history.add('third', 'Gnome-terminal')
+        assert history.list()[0][8] == 'Gnome-terminal'
         history.add_rich('formatted', b'<b>formatted</b>')
         history.add('formatted')
         rich_row = next(row for row in history.list() if row[1] == 'formatted')
@@ -60,9 +61,12 @@ with tempfile.TemporaryDirectory() as directory:
         assert {row[1]: row[5] for row in history.list()} == {
             'old': 'b', 'new': 'c', 'third': 'd'
         }
+        history.add('third')
         history.close()
         history = History(path)
         assert [row[1] for row in history.list()] == ['old', 'third', 'new']
+        assert history.get(third_id) is not None
+        assert next(row[8] for row in history.list() if row[1] == 'third') == 'Gnome-terminal'
     finally:
         history.close()
 

@@ -37,6 +37,8 @@ class History:
             self.db.execute("ALTER TABLE entries ADD COLUMN pin_key TEXT")
         if "alias" not in columns:
             self.db.execute("ALTER TABLE entries ADD COLUMN alias TEXT")
+        if "source_app" not in columns:
+            self.db.execute("ALTER TABLE entries ADD COLUMN source_app TEXT")
         self.db.execute("UPDATE entries SET first_copied_at=copied_at WHERE first_copied_at IS NULL")
         self.db.execute("UPDATE entries SET copy_count=1 WHERE copy_count IS NULL")
         self.db.execute("UPDATE entries SET pin_order=id WHERE pinned=1 AND pin_order IS NULL")
@@ -52,22 +54,22 @@ class History:
                 assigned.add(key)
         self.db.commit()
 
-    def add(self, value: str):
+    def add(self, value: str, source_app=None):
         if not value or not value.strip():
             return
-        self._add(value, "text", None)
+        self._add(value, "text", None, source_app)
 
-    def add_image(self, data: bytes):
+    def add_image(self, data: bytes, source_app=None):
         if not data:
             return
         digest = hashlib.sha256(data).hexdigest()
-        self._add("Image " + digest, "image", data)
+        self._add("Image " + digest, "image", data, source_app)
 
-    def add_rich(self, text: str, html: bytes):
+    def add_rich(self, text: str, html: bytes, source_app=None):
         if text and html:
-            self._add(text, "rich", html)
+            self._add(text, "rich", html, source_app)
 
-    def add_files(self, uris):
+    def add_files(self, uris, source_app=None):
         uris = [uri for uri in uris if uri.startswith("file://")]
         if not uris:
             return
@@ -76,21 +78,22 @@ class History:
         title = "Files: " + ", ".join(names[:3])
         if len(names) > 3:
             title += f" (+{len(names) - 3})"
-        self._add(title + " " + hashlib.sha256(data).hexdigest(), "files", data)
+        self._add(title + " " + hashlib.sha256(data).hexdigest(), "files", data, source_app)
 
-    def _add(self, value, kind, data):
+    def _add(self, value, kind, data, source_app):
         now = time.time()
         with self.db:
             self.db.execute(
-                "INSERT INTO entries(text, copied_at, first_copied_at, copy_count, kind, data) "
-                "VALUES (?, ?, ?, 1, ?, ?) "
+                "INSERT INTO entries(text, copied_at, first_copied_at, copy_count, kind, data, source_app) "
+                "VALUES (?, ?, ?, 1, ?, ?, ?) "
                 "ON CONFLICT(text) DO UPDATE SET copied_at=excluded.copied_at, "
                 "copy_count=entries.copy_count+1, "
                 "kind=CASE WHEN excluded.kind='text' AND entries.kind!='text' "
                 "THEN entries.kind ELSE excluded.kind END, "
                 "data=CASE WHEN excluded.kind='text' AND entries.kind!='text' "
-                "THEN entries.data ELSE excluded.data END",
-                (value, now, now, kind, data),
+                "THEN entries.data ELSE excluded.data END, "
+                "source_app=COALESCE(excluded.source_app, entries.source_app)",
+                (value, now, now, kind, data, source_app),
             )
             self._prune()
 
@@ -111,7 +114,7 @@ class History:
              sort_by: str = "last_copied"):
         rows = self.db.execute(
             "SELECT id, text, pinned, kind, data, first_copied_at, copy_count, "
-            "pin_order, copied_at, pin_key, alias FROM entries "
+            "pin_order, copied_at, pin_key, alias, source_app FROM entries "
             "ORDER BY copied_at DESC, id DESC"
         ).fetchall()
         candidates = ("exact", "regex", "fuzzy") if mode == "mixed" else (mode,)
@@ -137,7 +140,7 @@ class History:
                 return (1 if pins_position == "bottom" else 0, row[7] or row[0], 0, 0)
             score = result[0] if query and effective_mode == "fuzzy" else 0
             return (0 if pins_position == "bottom" else 1, score, -row[metric], -row[0])
-        return [row[:5] + (row[9], result[1], shown)
+        return [row[:5] + (row[9], result[1], shown, row[11])
                 for row, result, shown in sorted(matches, key=order)]
 
     def get(self, entry_id: int):

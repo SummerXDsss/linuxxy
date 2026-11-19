@@ -15,7 +15,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
 from history import History
 from autostart import set_enabled as set_autostart
@@ -47,6 +47,7 @@ class App:
         self.paste_stack = []
         self.paste_keys = None
         self.paste_advance_id = None
+        self.application_info = None
 
         self.window = Gtk.Window(title="Linuxxy")
         self.window.set_default_size(440, 120)
@@ -196,16 +197,32 @@ class App:
                 self.cancel_paste_stack()
             self.last_signature = signature
             if not self.paused:
+                source_app = self.x11.clipboard_source_app() if self.x11 else None
                 if uris and self.settings.get("save_files"):
-                    self.history.add_files(uris)
+                    self.history.add_files(uris, source_app)
                 elif image and signature and self.settings.get("save_images"):
-                    self.history.add_image(data)
+                    self.history.add_image(data, source_app)
                 elif html and text and self.settings.get("save_text"):
-                    self.history.add_rich(text, html)
+                    self.history.add_rich(text, html, source_app)
                 elif text and self.settings.get("save_text"):
-                    self.history.add(text)
+                    self.history.add(text, source_app)
                 self.refresh()
         return False
+
+    def source_icon(self, wm_class):
+        if self.application_info is None:
+            self.application_info = {}
+            for app in Gio.AppInfo.get_all():
+                desktop_id = app.get_id() or ""
+                names = (app.get_startup_wm_class(), desktop_id.removesuffix(".desktop"))
+                for name in names:
+                    if name:
+                        self.application_info.setdefault(name.casefold(), app)
+        app = self.application_info.get(wm_class.casefold())
+        icon = app.get_icon() if app else None
+        if icon is None:
+            icon = Gio.ThemedIcon.new("application-x-executable")
+        return Gtk.Image.new_from_gicon(icon, Gtk.IconSize.MENU), app.get_name() if app else wm_class
 
     def refresh(self):
         selected = self.selected()
@@ -216,7 +233,7 @@ class App:
         previous_pin = None
         row_count = 0
         image_count = 0
-        for index, (entry_id, value, pinned, kind, data, pin_key, matches, shown) in enumerate(self.history.list(
+        for index, (entry_id, value, pinned, kind, data, pin_key, matches, shown, source_app) in enumerate(self.history.list(
             self.search.get_text(), self.settings.get("search_mode"),
             self.settings.get("pins_position"), self.settings.get("sort_by")
         )):
@@ -275,6 +292,11 @@ class App:
             content = Gtk.Box(spacing=8)
             content.set_border_width(4)
             row.content = content
+            if source_app and self.settings.get("show_application_icons"):
+                app_icon, app_name = self.source_icon(source_app)
+                app_icon.set_pixel_size(15)
+                app_icon.set_tooltip_text(f"Copied from {app_name}")
+                content.pack_start(app_icon, False, False, 2)
             if pinned:
                 content.pack_start(Gtk.Image.new_from_icon_name("emblem-favorite", Gtk.IconSize.MENU),
                                    False, False, 2)
@@ -930,6 +952,9 @@ class App:
         show_search.connect("toggled", lambda button: search_visibility.set_sensitive(button.get_active()))
         search_display.pack_start(search_visibility, False, False, 0)
         grids["Appearance"].attach(search_display, 0, 9, 2, 1)
+        application_icons = Gtk.CheckButton(label="Show source application icons")
+        application_icons.set_active(self.settings.get("show_application_icons"))
+        grids["Appearance"].attach(application_icons, 0, 10, 2, 1)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -982,6 +1007,7 @@ class App:
                 ("show_hex_color_swatch", color_swatch.get_active()),
                 ("show_special_symbols", special_symbols.get_active()),
                 ("show_search_field", show_search.get_active()),
+                ("show_application_icons", application_icons.get_active()),
                 ("search_visibility", search_visibility.get_active_id()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),

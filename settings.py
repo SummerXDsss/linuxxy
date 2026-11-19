@@ -29,6 +29,7 @@ DEFAULTS = {
     "save_images": True,
     "save_files": True,
     "show_footer": True,
+    "show_application_icons": False,
 }
 
 
