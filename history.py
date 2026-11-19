@@ -5,6 +5,7 @@ import time
 import re
 import hashlib
 from pathlib import Path
+from urllib.parse import urlparse, unquote
 
 
 class History:
@@ -35,6 +36,21 @@ class History:
             return
         digest = hashlib.sha256(data).hexdigest()
         self._add("Image " + digest, "image", data)
+
+    def add_rich(self, text: str, html: bytes):
+        if text and html:
+            self._add(text, "rich", html)
+
+    def add_files(self, uris):
+        uris = [uri for uri in uris if uri.startswith("file://")]
+        if not uris:
+            return
+        data = ("\r\n".join(uris) + "\r\n").encode("utf-8")
+        names = [Path(unquote(urlparse(uri).path)).name for uri in uris]
+        title = "Files: " + ", ".join(names[:3])
+        if len(names) > 3:
+            title += f" (+{len(names) - 3})"
+        self._add(title + " " + hashlib.sha256(data).hexdigest(), "files", data)
 
     def _add(self, value, kind, data):
         with self.db:

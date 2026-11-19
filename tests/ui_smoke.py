@@ -142,7 +142,7 @@ def main():
             activate(target_xid)
             keys('Shift_L', 'Super_L', 'v')
             wait_for(lambda: window_id('Linuxxy'))
-            keys('Return')
+            keys('Alt_L', 'Return')
             wait_for(lambda: (temp / 'target-value').read_text() == 'hello linuxxy clipboard')
             screenshot(target_xid, 'pasted.png')
             print('UI smoke passed; screenshots saved in', OUT)

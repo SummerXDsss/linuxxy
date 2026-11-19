@@ -28,21 +28,22 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
 
 ## Use
 
-1. Copy text or an image in any application.
+1. Copy text, an image, or files in any application.
 2. Press **Super+Shift+V** or click the tray icon.
 3. Type to search. Press **Down** to focus results, then use arrow keys.
-4. Press **Enter** or click a result to paste it into the previous window.
-5. Press **Ctrl+Enter** or use **Copy** in the right-click menu to place it on the clipboard without
-   pasting. **Escape** hides the window.
+4. Press **Enter** or click a result to copy it. Press **Alt+Enter** or
+   **Alt+click** to paste it into the previous window. **Escape** hides the window.
 
-Use **Ctrl+1…9** to choose a visible result directly. Click a row to choose it,
+Use **Ctrl+1…9** to copy a visible result or **Alt+1…9** to paste it.
+Click a row to choose it,
 or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
 **Alt+P** to pin and **Alt+Delete** to delete the selected entry.
-Clear unpinned history from the footer.
+Use **Ctrl+Alt+Delete** to clear unpinned history or **Ctrl+Alt+Shift+Delete**
+to clear all history, including pinned entries. Clear unpinned history from the footer.
 Press **Space** on a selected result to preview its full text or image.
 Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
 the popup is open. General, Storage, and Appearance pages cover the opening
-shortcut, default paste action, text/image capture, history limit, clipboard
+shortcut, default paste action, text/image/file capture, history limit, clipboard
 check interval, search mode (exact, fuzzy, regex, or mixed), pinned item
 position, popup position, footer visibility, clear-on-quit behavior, and launch
 at login. Preferences are saved in `$XDG_CONFIG_HOME/linuxxy/settings.json`.
@@ -50,9 +51,11 @@ Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.
 
 History is stored in an unencrypted SQLite database at
 `$XDG_DATA_HOME/linuxxy/history.sqlite`, usually
-`~/.local/share/linuxxy/history.sqlite`. The current version handles text and
-images. Global shortcuts and automatic paste require X11. Wayland support,
-files, and rich text are future work.
+`~/.local/share/linuxxy/history.sqlite`. The current version handles plain
+text, HTML alongside text, images, and file URI lists. Global shortcuts,
+automatic paste, and restoring rich formats require X11. Wayland support is
+future work. Rich clipboard payloads over 200 KB fall back to plain text when
+restored, and file/rich clipboard contents are owned by Linuxxy while it runs.
 
 ## License
 
@@ -68,3 +71,5 @@ preview, preferences, and pasted result to [screenshots](screenshots). The
 pages with known sample data. These scripts need `wmctrl`, `xwd`, and `ffmpeg`
 in addition to the runtime dependencies. Run the smoke test from an X11
 desktop when no other application has an active keyboard grab.
+The [format smoke test](tests/formats_smoke.py) verifies HTML and file copying
+between separate X11 applications and restores the clipboard afterward.

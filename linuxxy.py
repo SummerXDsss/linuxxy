@@ -18,6 +18,7 @@ from history import History
 from autostart import set_enabled as set_autostart
 from settings import Settings
 from x11 import X11
+from x11_clipboard import X11Clipboard
 
 
 class App:
@@ -31,6 +32,7 @@ class App:
         self.closed = False
         self.paused = False
         self.x11 = None
+        self.rich_clipboard = None
         self.return_window = None
 
         self.window = Gtk.Window(title="Linuxxy")
@@ -60,7 +62,7 @@ class App:
         self.rows = Gtk.ListBox()
         self.rows.set_name("linuxxy-list")
         self.rows.set_selection_mode(Gtk.SelectionMode.SINGLE)
-        self.rows.connect("row-activated", self.choose)
+        self.rows.connect("row-activated", lambda _list, row: self.choose(row))
         self.rows.connect("row-selected", self.mark_selected)
         scroll.add(self.rows)
         box.pack_start(Gtk.Separator(), False, False, 4)
@@ -75,7 +77,7 @@ class App:
             button.set_relief(Gtk.ReliefStyle.NONE)
             button.connect("clicked", callback)
             footer.pack_start(button, False, False, 0)
-        hint = Gtk.Label(label="↵  Copy / Paste")
+        hint = Gtk.Label(label="↵ Copy  ·  Alt+↵ Paste")
         hint.set_xalign(1)
         footer.pack_end(hint, False, False, 4)
 
@@ -88,6 +90,10 @@ class App:
         self.capture()
         self.refresh()
         if os.environ.get("XDG_SESSION_TYPE", "x11") == "x11":
+            try:
+                self.rich_clipboard = X11Clipboard()
+            except (RuntimeError, OSError) as error:
+                print(f"Clipboard formats unavailable: {error}")
             try:
                 self.x11 = X11(self.toggle_window, self.settings.get("shortcut"))
             except (RuntimeError, OSError, ValueError) as error:
@@ -119,19 +125,39 @@ class App:
     def capture(self, force=False):
         if self.closed:
             return False
-        image = self.clipboard.wait_for_image() if self.clipboard.wait_is_image_available() else None
-        if image:
-            ok, data = image.save_to_bufferv("png", [], [])
-            signature = ("image", hashlib.sha256(data).digest()) if ok else None
+        if self.rich_clipboard and self.rich_clipboard.is_owner():
+            return False
+        uris = self.clipboard.wait_for_uris() if self.clipboard.wait_is_uris_available() else None
+        uris = [uri for uri in uris or [] if uri.startswith("file://")]
+        image = None
+        text = None
+        html = None
+        if uris:
+            signature = ("files", tuple(uris))
+        elif self.clipboard.wait_is_image_available():
+            image = self.clipboard.wait_for_image()
+            if image:
+                ok, data = image.save_to_bufferv("png", [], [])
+                signature = ("image", hashlib.sha256(data).digest()) if ok else None
+            else:
+                signature = None
         else:
             text = self.clipboard.wait_for_text()
-            signature = ("text", text)
+            target = Gdk.atom_intern("text/html", False)
+            if text and self.clipboard.wait_is_target_available(target):
+                selection = self.clipboard.wait_for_contents(target)
+                html = selection.get_data() if selection else None
+            signature = ("rich", text, hashlib.sha256(html).digest()) if html else ("text", text)
         if signature != self.last_signature or force:
             self.last_signature = signature
             if not self.paused:
-                if image and signature and self.settings.get("save_images"):
+                if uris and self.settings.get("save_files"):
+                    self.history.add_files(uris)
+                elif image and signature and self.settings.get("save_images"):
                     self.history.add_image(data)
-                elif not image and text and self.settings.get("save_text"):
+                elif html and text and self.settings.get("save_text"):
+                    self.history.add_rich(text, html)
+                elif text and self.settings.get("save_text"):
                     self.history.add(text)
                 self.refresh()
         return False
@@ -172,6 +198,8 @@ class App:
             else:
                 visual = None
                 preview = " ".join(value.split())[:160]
+                if kind == "files":
+                    preview = preview.rsplit(" ", 1)[0]
             label = Gtk.Label(label=preview, xalign=0)
             label.set_ellipsize(3)
             label.set_margin_top(4)
@@ -183,6 +211,9 @@ class App:
             row.content = content
             if pinned:
                 content.pack_start(Gtk.Image.new_from_icon_name("emblem-favorite", Gtk.IconSize.MENU),
+                                   False, False, 2)
+            if kind == "files":
+                content.pack_start(Gtk.Image.new_from_icon_name("folder", Gtk.IconSize.MENU),
                                    False, False, 2)
             if visual:
                 content.pack_start(visual, False, False, 0)
@@ -213,7 +244,7 @@ class App:
 
     def row_click(self, row, event):
         if event.button == 1:
-            self.choose(row)
+            self.choose(row, paste=True if event.state & Gdk.ModifierType.MOD1_MASK else None)
             return True
         if event.button != 3:
             return False
@@ -243,7 +274,24 @@ class App:
     def choose(self, row, paste=None):
         if paste is None:
             paste = self.settings.get("paste_by_default")
-        if row.kind == "image":
+        if row.kind == "files" and self.rich_clipboard:
+            uris = row.data.decode("utf-8").splitlines()
+            self.rich_clipboard.set({
+                "text/uri-list": row.data,
+                "x-special/gnome-copied-files": ("copy\n" + "\n".join(uris)).encode("utf-8"),
+            })
+            self.last_signature = ("files", tuple(uris))
+            self.history.add_files(uris)
+        elif row.kind == "rich" and self.rich_clipboard:
+            text = row.value.encode("utf-8")
+            self.rich_clipboard.set({
+                "UTF8_STRING": text,
+                "text/plain;charset=utf-8": text,
+                "text/html": row.data,
+            })
+            self.last_signature = ("rich", row.value, hashlib.sha256(row.data).digest())
+            self.history.add_rich(row.value, row.data)
+        elif row.kind == "image":
             loader = GdkPixbuf.PixbufLoader.new_with_type("png")
             loader.write(row.data)
             loader.close()
@@ -253,8 +301,10 @@ class App:
         else:
             self.clipboard.set_text(row.value, -1)
             self.last_signature = ("text", row.value)
-            self.history.add(row.value)
-        self.clipboard.store()
+            if row.kind == "text":
+                self.history.add(row.value)
+        if not (row.kind in ("files", "rich") and self.rich_clipboard):
+            self.clipboard.store()
         self.window.hide()
         self.search.set_text("")
         self.refresh()
@@ -295,23 +345,33 @@ class App:
         self.refresh()
 
     def on_key(self, _window, event):
-        if event.state & Gdk.ModifierType.CONTROL_MASK:
+        ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
+        alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
+        shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
+        if ctrl or alt:
             digit = Gdk.keyval_name(event.keyval)
             if digit and digit in "123456789":
                 rows = self.rows.get_children()
                 if int(digit) <= len(rows):
-                    self.choose(rows[int(digit) - 1])
+                    self.choose(rows[int(digit) - 1], paste=alt)
                 return True
-        if event.keyval == Gdk.KEY_comma and event.state & Gdk.ModifierType.CONTROL_MASK:
+        if event.keyval == Gdk.KEY_comma and ctrl:
             self.show_settings()
             return True
         if event.keyval == Gdk.KEY_Escape:
             self.hide_window()
             return True
-        if event.keyval == Gdk.KEY_p and event.state & Gdk.ModifierType.MOD1_MASK:
+        if event.keyval == Gdk.KEY_p and alt:
             self.toggle_pin()
             return True
-        if event.keyval == Gdk.KEY_Delete and event.state & Gdk.ModifierType.MOD1_MASK:
+        if event.keyval == Gdk.KEY_Delete and ctrl and alt:
+            if shift:
+                self.history.clear_all()
+            else:
+                self.history.clear()
+            self.refresh()
+            return True
+        if event.keyval == Gdk.KEY_Delete and alt:
             self.delete_selected()
             return True
         if event.keyval == Gdk.KEY_space and self.selected() and not self.search.is_focus():
@@ -320,7 +380,7 @@ class App:
         if event.keyval == Gdk.KEY_Return:
             row = self.selected() or next(iter(self.rows.get_children()), None)
             if row:
-                if event.state & Gdk.ModifierType.CONTROL_MASK:
+                if alt or ctrl:
                     self.choose(row, paste=not self.settings.get("paste_by_default"))
                 else:
                     self.choose(row)
@@ -404,7 +464,7 @@ class App:
         shortcut = Gtk.Entry(text=self.settings.get("shortcut"))
         shortcut.set_tooltip_text("Example: Super+Shift+V")
         field(grids["General"], 0, "Open shortcut", shortcut)
-        paste = Gtk.CheckButton(label="Paste by default (Ctrl+Enter reverses)")
+        paste = Gtk.CheckButton(label="Paste by default (Alt+Enter reverses)")
         paste.set_active(self.settings.get("paste_by_default"))
         grids["General"].attach(paste, 0, 1, 2, 1)
         search_mode = Gtk.ComboBoxText()
@@ -425,13 +485,16 @@ class App:
         save_images = Gtk.CheckButton(label="Save images")
         save_images.set_active(self.settings.get("save_images"))
         grids["Storage"].attach(save_images, 0, 1, 2, 1)
-        field(grids["Storage"], 2, "History items", size)
+        save_files = Gtk.CheckButton(label="Save files")
+        save_files.set_active(self.settings.get("save_files"))
+        grids["Storage"].attach(save_files, 0, 2, 2, 1)
+        field(grids["Storage"], 3, "History items", size)
         interval = Gtk.SpinButton.new_with_range(100, 5000, 100)
         interval.set_value(self.settings.get("check_interval_ms"))
-        field(grids["Storage"], 3, "Clipboard check (ms)", interval)
+        field(grids["Storage"], 4, "Clipboard check (ms)", interval)
         clear_on_quit = Gtk.CheckButton(label="Clear history on quit")
         clear_on_quit.set_active(self.settings.get("clear_on_quit"))
-        grids["Storage"].attach(clear_on_quit, 0, 4, 2, 1)
+        grids["Storage"].attach(clear_on_quit, 0, 5, 2, 1)
 
         pins_position = Gtk.ComboBoxText()
         pins_position.append("top", "Top")
@@ -481,6 +544,7 @@ class App:
                 ("history_size", size.get_value_as_int()),
                 ("save_text", save_text.get_active()),
                 ("save_images", save_images.get_active()),
+                ("save_files", save_files.get_active()),
                 ("check_interval_ms", interval.get_value_as_int()),
                 ("search_mode", search_mode.get_active_id()),
                 ("pins_position", pins_position.get_active_id()),
@@ -535,7 +599,9 @@ class App:
             text.set_monospace(True)
             text.set_left_margin(12)
             text.set_right_margin(12)
-            text.get_buffer().set_text(row.value)
+            text.get_buffer().set_text(
+                row.data.decode("utf-8").replace("\r", "") if row.kind == "files" else row.value
+            )
             scroll.add(text)
         self.preview = window
         window.show_all()
@@ -552,11 +618,14 @@ class App:
             return
         self.closed = True
         self.clipboard.disconnect(self.clipboard_handler)
-        GLib.source_remove(self.poll_id)
+        if GLib.MainContext.default().find_source_by_id(self.poll_id):
+            GLib.source_remove(self.poll_id)
         if self.settings.get("clear_on_quit"):
             self.history.clear_all()
         if self.x11:
             self.x11.close()
+        if self.rich_clipboard:
+            self.rich_clipboard.close()
         self.history.close()
 
     def quit(self):
