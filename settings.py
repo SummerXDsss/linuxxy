@@ -22,6 +22,8 @@ DEFAULTS = {
     "image_max_height": 40,
     "show_hex_color_swatch": True,
     "show_special_symbols": True,
+    "show_search_field": True,
+    "search_visibility": "always",
     "pins_position": "top",
     "save_text": True,
     "save_images": True,
@@ -68,6 +70,9 @@ class Settings:
         elif key == "pins_position":
             if value not in ("top", "bottom"):
                 raise ValueError("Invalid pins position")
+        elif key == "search_visibility":
+            if value not in ("always", "during_search"):
+                raise ValueError("Invalid search visibility")
         elif key == "image_max_height":
             if type(value) is not int or not 1 <= value <= 200:
                 raise ValueError("Invalid image height")

@@ -79,7 +79,27 @@ with tempfile.TemporaryDirectory() as directory:
                 if number < 2:
                     page(number + 1)
                 else:
-                    app.preferences.destroy()
+                    appearance = notebook.get_nth_page(2)
+                    search_options = next(widget for widget in appearance.get_children()
+                                          if isinstance(widget, Gtk.Box) and any(
+                                              isinstance(child, Gtk.CheckButton) and
+                                              child.get_label() == 'Show search field'
+                                              for child in widget.get_children()))
+                    search_toggle = next(widget for widget in search_options.get_children()
+                                         if isinstance(widget, Gtk.CheckButton))
+                    search_mode = next(widget for widget in search_options.get_children()
+                                       if isinstance(widget, Gtk.ComboBoxText))
+                    search_mode.set_active_id('during_search')
+                    search_toggle.set_active(False)
+                    buttons = app.preferences.get_child().get_children()[-1]
+                    save = next(widget for widget in buttons.get_children()
+                                if isinstance(widget, Gtk.Button) and widget.get_label() == 'Save')
+                    save.clicked()
+                    assert app.settings.get('search_visibility') == 'during_search'
+                    assert app.settings.get('show_search_field') is False
+                    persisted = Settings()
+                    assert persisted.get('search_visibility') == 'during_search'
+                    assert persisted.get('show_search_field') is False
                     app.quit()
                 return False
             GLib.timeout_add(150, take)

@@ -76,7 +76,9 @@ limit, clipboard check interval, history sorting (last copied, first copied, or 
 search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
 underline, or color), pinned item position, popup position, automatic preview
 and its delay, image thumbnail height, hex color swatches, visible whitespace
-symbols, footer visibility, clear-on-quit behavior, and launch at login.
+symbols, search field visibility (always, while typing, or hidden), footer
+visibility, clear-on-quit behavior, and launch at login. When the search field
+is hidden, typing still filters the history; Backspace removes the last character.
 Preferences are saved in
 `$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.
@@ -113,6 +115,8 @@ The [editor UI test](tests/editor_ui_smoke.py) opens a real item editor and save
 screenshots before and after changing its display name, content, and pin shortcut.
 The [editor data test](tests/editor_behavior.py) checks persistence, searching by
 alias or content, rich-text conversion, and duplicate rejection.
+The [search visibility test](tests/search_visibility_smoke.py) opens the real
+popup in both hidden-field modes and searches with keyboard input.
 The [history test](tests/history_behavior.py) verifies migration of older data,
 copy counts, sorting, and pin order.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy

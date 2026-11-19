@@ -64,11 +64,14 @@ class App:
         self.window.add(box)
         self.search = Gtk.SearchEntry()
         self.search.set_name("linuxxy-search")
+        self.search.set_no_show_all(True)
         self.search.set_placeholder_text("Search clipboard history")
-        self.search.connect("changed", lambda *_: GLib.idle_add(self.refresh))
+        self.search.connect("changed", self.search_changed)
         self.search.connect("key-press-event", self.search_key)
         box.pack_start(self.search, False, False, 3)
-        box.pack_start(Gtk.Separator(), False, False, 4)
+        self.search_separator = Gtk.Separator()
+        self.search_separator.set_no_show_all(True)
+        box.pack_start(self.search_separator, False, False, 4)
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         box.pack_start(scroll, True, True, 0)
@@ -100,6 +103,7 @@ class App:
         hint = Gtk.Label(label="↵ Copy  ·  Alt+↵ Paste")
         hint.set_xalign(1)
         footer.pack_end(hint, False, False, 4)
+        self.update_search_visibility()
 
         self.tray = Gtk.StatusIcon.new_from_icon_name("edit-paste")
         self.tray.set_tooltip_text("Linuxxy")
@@ -107,8 +111,6 @@ class App:
         self.tray.connect("popup-menu", self.tray_menu)
         self.poll_id = GLib.timeout_add(self.settings.get("check_interval_ms"), self.poll_clipboard)
         self.last_signature = None
-        self.capture()
-        self.refresh()
         if os.environ.get("XDG_SESSION_TYPE", "x11") == "x11":
             try:
                 self.rich_clipboard = X11Clipboard()
@@ -118,6 +120,8 @@ class App:
                 self.x11 = X11(self.toggle_window, self.settings.get("shortcut"))
             except (RuntimeError, OSError, ValueError) as error:
                 print(f"Global shortcut unavailable: {error}")
+        self.capture()
+        self.refresh()
 
     def install_style(self):
         provider = Gtk.CssProvider()
@@ -140,6 +144,22 @@ class App:
 
     def on_clipboard_change(self, *_):
         GLib.idle_add(self.capture, time.monotonic() > self.ignore_own_change_until)
+
+    def search_changed(self, *_):
+        self.update_search_visibility()
+        GLib.idle_add(self.refresh)
+
+    def update_search_visibility(self):
+        visible = self.settings.get("show_search_field") and (
+            self.settings.get("search_visibility") == "always" or bool(self.search.get_text())
+        )
+        was_focused = self.search.is_focus()
+        self.search.set_visible(visible)
+        self.search_separator.set_visible(visible)
+        if not visible and was_focused and self.window.get_visible():
+            row = self.selected()
+            if row:
+                row.grab_focus()
 
     def poll_clipboard(self):
         self.capture()
@@ -299,6 +319,8 @@ class App:
         visible = min(count, 9)
         image_extra = max(0, self.settings.get("image_max_height") - 30)
         height = 105 + max(34, visible * 40 + min(image_count, visible) * image_extra)
+        if not self.search.get_visible():
+            height -= 43
         if not self.settings.get("show_footer"):
             height -= 26
         self.window.resize(440, min(height, 470))
@@ -651,6 +673,21 @@ class App:
         ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
         shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
+        if not self.search.get_visible() and self.window.get_visible():
+            if event.keyval == Gdk.KEY_BackSpace and self.search.get_text():
+                self.search.set_text(self.search.get_text()[:-1])
+                return True
+            if not event.state & (Gdk.ModifierType.CONTROL_MASK |
+                                  Gdk.ModifierType.MOD1_MASK |
+                                  Gdk.ModifierType.MOD4_MASK):
+                typed = event.string
+                if typed and typed.isprintable() and (
+                        not typed.isspace() or self.search.get_text()):
+                    self.search.set_text(self.search.get_text() + typed)
+                    if self.search.get_visible():
+                        self.search.grab_focus()
+                        self.search.set_position(-1)
+                    return True
         if event.keyval == Gdk.KEY_F2:
             self.edit_selected()
             return True
@@ -756,7 +793,10 @@ class App:
                 self.window.move(x, y)
             self.window.show_all()
             self.window.present_with_time(event_time)
-            self.search.grab_focus()
+            if self.search.get_visible():
+                self.search.grab_focus()
+            elif self.selected():
+                self.selected().grab_focus()
             self.schedule_preview()
 
     def tray_menu(self, _icon, button, activate_time):
@@ -779,7 +819,7 @@ class App:
         self.cancel_preview()
         self.window.hide()
         window = Gtk.Window(title="Linuxxy Preferences")
-        window.set_default_size(460, 510)
+        window.set_default_size(460, 550)
         window.set_border_width(14)
         window.set_transient_for(self.window)
         window.set_keep_above(True)
@@ -878,6 +918,18 @@ class App:
         special_symbols = Gtk.CheckButton(label="Show spaces, tabs, and line breaks")
         special_symbols.set_active(self.settings.get("show_special_symbols"))
         grids["Appearance"].attach(special_symbols, 0, 8, 2, 1)
+        search_display = Gtk.Box(spacing=8)
+        show_search = Gtk.CheckButton(label="Show search field")
+        show_search.set_active(self.settings.get("show_search_field"))
+        search_display.pack_start(show_search, False, False, 0)
+        search_visibility = Gtk.ComboBoxText()
+        search_visibility.append("always", "Always")
+        search_visibility.append("during_search", "While typing")
+        search_visibility.set_active_id(self.settings.get("search_visibility"))
+        search_visibility.set_sensitive(show_search.get_active())
+        show_search.connect("toggled", lambda button: search_visibility.set_sensitive(button.get_active()))
+        search_display.pack_start(search_visibility, False, False, 0)
+        grids["Appearance"].attach(search_display, 0, 9, 2, 1)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -929,6 +981,8 @@ class App:
                 ("image_max_height", image_height.get_value_as_int()),
                 ("show_hex_color_swatch", color_swatch.get_active()),
                 ("show_special_symbols", special_symbols.get_active()),
+                ("show_search_field", show_search.get_active()),
+                ("search_visibility", search_visibility.get_active_id()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),
             ):
@@ -940,6 +994,7 @@ class App:
             self.footer.set_visible(self.settings.get("show_footer"))
             GLib.source_remove(self.poll_id)
             self.poll_id = GLib.timeout_add(self.settings.get("check_interval_ms"), self.poll_clipboard)
+            self.update_search_visibility()
             self.refresh()
             window.destroy()
 

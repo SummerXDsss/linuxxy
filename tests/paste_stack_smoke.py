@@ -34,18 +34,25 @@ def main():
                    XDG_RUNTIME_DIR=directory,
                    LINUXXY_TEST_XID=str(temp / 'target-xid'),
                    LINUXXY_TEST_VALUE=str(temp / 'target-value'),
-                   LINUXXY_TEST_COMMAND=str(temp / 'target-command'))
+                   LINUXXY_TEST_COMMAND=str(temp / 'target-command'),
+                   LINUXXY_TEST_CLIPBOARD_COMMAND=str(temp / 'clipboard-command'),
+                   LINUXXY_TEST_CLIPBOARD_ACK=str(temp / 'clipboard-ack'))
         app = subprocess.Popen([sys.executable, str(ROOT / 'linuxxy.py')], env=env,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         target = subprocess.Popen([sys.executable, str(ROOT / 'tests/paste_target.py')], env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        source = subprocess.Popen([sys.executable, str(ROOT / 'tests/clipboard_source.py')], env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             target_xid = int(wait_for(lambda: (temp / 'target-xid').read_text()
                                       if (temp / 'target-xid').exists() else None))
             database = temp / 'linuxxy/history.sqlite'
+            def copy_text(value):
+                (temp / 'clipboard-command').write_text(value)
+                wait_for(lambda: (temp / 'clipboard-ack').read_text() == value
+                         if (temp / 'clipboard-ack').exists() else False)
             for value in ('Queue A', 'Queue B', 'Queue C'):
-                clipboard.set_text(value, -1)
-                clipboard.store()
+                copy_text(value)
                 def stored():
                     if not database.exists():
                         return False
@@ -85,8 +92,7 @@ def main():
             keys('Shift_L', 'Down')
             keys('Control_L', 'Shift_L', 'Return')
             wait_for(lambda: not window_id('Linuxxy'))
-            clipboard.set_text('New external copy', -1)
-            clipboard.store()
+            copy_text('New external copy')
             def external_stored():
                 with sqlite3.connect(database) as db:
                     return db.execute('SELECT 1 FROM entries WHERE text=?',
@@ -103,7 +109,9 @@ def main():
         finally:
             target.terminate()
             app.terminate()
+            source.terminate()
             target.communicate(timeout=5)
+            source.communicate(timeout=5)
             stdout, stderr = app.communicate(timeout=5)
             if stdout:
                 print(stdout.decode(errors='replace')[-1200:])
