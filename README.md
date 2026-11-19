@@ -60,8 +60,8 @@ Click a row to choose it,
 or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
 **Alt+P** to pin and **Alt+Delete** to delete the selected entry. These shortcuts
 can be changed or cleared in General settings.
-Pinned entries can be moved with **Alt+Up/Down** or the right-click menu;
-their letter shortcuts stay with each entry.
+Pinned entries can be moved with **Alt+Up/Down**, the right-click menu, or
+dragging. Their letter shortcuts stay with each entry.
 Pinned entries stay visible above or below the scrolling history, as chosen in
 Appearance settings. If many items are pinned, their section scrolls within the
 popup height limit. Arrow keys and Shift+arrow keys move across both sections.
@@ -184,6 +184,9 @@ quit shortcut.
 The [fixed pins test](tests/sticky_pins_smoke.py) scrolls a long real popup with
 pins at the top and bottom, checks their screen positions and height limit,
 and moves selection across the two sections with arrow keys.
+The [pin drag test](tests/pin_drag_smoke.py) reorders pinned entries with real
+pointer events, checks persistence, and verifies left-click copying and the
+right-click menu.
 The [shortcut behavior test](tests/action_shortcuts_behavior.py) checks validation,
 conflicts, disabled keys, and persistence.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy

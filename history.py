@@ -264,6 +264,22 @@ class History:
             self.db.execute("UPDATE entries SET pin_order=? WHERE id=?", (own_order, other_id))
         return True
 
+    def move_pin_to(self, entry_id: int, target_id: int):
+        pins = [row[0] for row in self.db.execute(
+            "SELECT id FROM entries WHERE pinned=1 ORDER BY pin_order, id"
+        )]
+        if entry_id not in pins or target_id not in pins or entry_id == target_id:
+            return False
+        target_index = pins.index(target_id)
+        pins.remove(entry_id)
+        pins.insert(target_index, entry_id)
+        with self.db:
+            self.db.executemany(
+                "UPDATE entries SET pin_order=? WHERE id=?",
+                ((index + 1, pin_id) for index, pin_id in enumerate(pins)),
+            )
+        return True
+
     def delete(self, entry_id: int):
         with self.db:
             self.db.execute("DELETE FROM entries WHERE id=?", (entry_id,))

@@ -84,6 +84,8 @@ class App:
         self.pending_popup_origin = None
         self.hover_poll_id = None
         self.last_pointer_position = None
+        self.pin_drag = None
+        self.context_menu = None
         self.multi_selection = set()
         self.paste_stack = []
         self.paste_keys = None
@@ -102,6 +104,7 @@ class App:
         self.window.set_name("linuxxy-popup")
         self.window.connect("delete-event", self.hide_window)
         self.window.connect("key-press-event", self.on_key)
+        Gdk.event_handler_set(self.dispatch_gdk_event)
         self.install_style()
         gtk_settings = Gtk.Settings.get_default()
         gtk_settings.connect("notify::gtk-theme-name", self.system_theme_changed)
@@ -260,6 +263,26 @@ class App:
         rows.connect("key-press-event", self.on_key)
         return rows
 
+    def dispatch_gdk_event(self, event):
+        if self.window.get_visible() and event.type in (
+                Gdk.EventType.BUTTON_PRESS, Gdk.EventType.BUTTON_RELEASE,
+                Gdk.EventType.MOTION_NOTIFY):
+            event_window = event.get_window()
+            if event_window is not None and event_window.get_toplevel() == self.window.get_window():
+                _ok, x, y = event.get_root_coords()
+                if event.type == Gdk.EventType.BUTTON_PRESS:
+                    row = self.row_at_root(x, y)
+                    if row is not None and self.row_click(row, event):
+                        return
+                elif event.type == Gdk.EventType.BUTTON_RELEASE and self.pin_drag is not None:
+                    if event.get_button()[1] == 1:
+                        self.finish_pin_drag(x, y)
+                        return
+                elif event.type == Gdk.EventType.MOTION_NOTIFY and self.pin_drag is not None:
+                    self.update_pin_drag(x, y, True)
+                    return
+        Gtk.main_do_event(event)
+
     def install_style(self):
         theme = self.settings.get("popup_theme")
         if theme == "system":
@@ -297,6 +320,7 @@ class App:
             #linuxxy-index { color: @index@; font-size: 10px; min-width: 16px; }
             box.linuxxy-multi-selected { background-color: @multi@; border-radius: 5px; }
             #linuxxy-list > row box.linuxxy-multi-selected label { color: @multi_text@; }
+            #linuxxy-list > row box.linuxxy-drop-target { box-shadow: inset 0 0 0 2px @selected@; }
             #linuxxy-color-swatch { border: 1px solid #888; border-radius: 2px; }
             #linuxxy-preview { background: @preview@; border-left: 1px solid @border@; }
             #linuxxy-preview.left { border-left: none; border-right: 1px solid @border@; }
@@ -380,15 +404,21 @@ class App:
             self.last_signature = signature
             if not self.paused:
                 source_app = self.x11.clipboard_source_app() if self.x11 else None
+                recorded = False
                 if uris and self.settings.get("save_files"):
                     self.history.add_files(uris, source_app)
+                    recorded = True
                 elif image and signature and self.settings.get("save_images"):
                     self.history.add_image(data, source_app)
-                elif html and text and self.settings.get("save_text"):
+                    recorded = True
+                elif html and text and text.strip() and self.settings.get("save_text"):
                     self.history.add_rich(text, html, source_app)
-                elif text and self.settings.get("save_text"):
+                    recorded = True
+                elif text and text.strip() and self.settings.get("save_text"):
                     self.history.add(text, source_app)
-                self.refresh()
+                    recorded = True
+                if recorded:
+                    self.refresh()
         return False
 
     def source_icon(self, wm_class):
@@ -428,10 +458,13 @@ class App:
             row.kind, row.data = kind, data
             row.pin_key = pin_key
             row.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK |
-                           Gdk.EventMask.POINTER_MOTION_MASK)
+                           Gdk.EventMask.POINTER_MOTION_MASK |
+                           Gdk.EventMask.BUTTON_PRESS_MASK |
+                           Gdk.EventMask.BUTTON_RELEASE_MASK)
             row.connect("enter-notify-event", self.row_motion)
             row.connect("motion-notify-event", self.row_motion)
             row.connect("button-press-event", self.row_click)
+            row.connect("button-release-event", self.row_release)
             if kind == "image" and data:
                 loader = GdkPixbuf.PixbufLoader.new_with_type("png")
                 loader.write(data)
@@ -575,14 +608,92 @@ class App:
             self.window.resize(*self.popup_size)
 
     def list_motion(self, _list, event):
+        if self.pin_drag is not None:
+            return False
         row = _list.get_row_at_y(int(event.y))
         if row is not None and self.window.get_visible() and self.selected() is not row:
             self.rows.select_row(row)
         return False
 
+
     def row_motion(self, row, _event):
+        if self.pin_drag is not None:
+            return False
         if self.window.get_visible() and self.selected() is not row:
             self.rows.select_row(row)
+        return False
+
+    def pin_drop_target(self, x, y):
+        row = self.row_at_root(x, y)
+        return row if row is not None and row.pinned else None
+
+    def row_at_root(self, x, y):
+        _ok, origin_x, origin_y = self.window.get_window().get_origin()
+        local_x, local_y = x - origin_x, y - origin_y
+        for scroll, rows in ((self.pin_scroll, self.pin_rows),
+                             (self.history_scroll, self.history_rows)):
+            if not scroll.get_visible() or not rows.get_mapped():
+                continue
+            viewport_widget = self.pin_container if rows is self.pin_rows else scroll
+            viewport = viewport_widget.translate_coordinates(self.window, 0, 0)
+            content = rows.translate_coordinates(self.window, 0, 0)
+            if viewport is None or content is None:
+                continue
+            left, top = viewport
+            if (left <= local_x < left + viewport_widget.get_allocated_width() and
+                    top <= local_y < top + viewport_widget.get_allocated_height()):
+                return rows.get_row_at_y(int(local_y - content[1]))
+        return None
+
+
+    def update_pin_drag(self, x, y, pressed):
+        drag = self.pin_drag
+        if drag is None:
+            return
+        if not pressed:
+            self.finish_pin_drag(x, y)
+            return
+        if not drag.active and abs(y - drag.start_y) < 8 and abs(x - drag.start_x) < 8:
+            return
+        drag.active = True
+        viewport = self.pin_container.translate_coordinates(self.window, 0, 0)
+        if viewport is not None:
+            _ok, _origin_x, origin_y = self.window.get_window().get_origin()
+            position = y - origin_y - viewport[1]
+            adjustment = self.pin_scroll.get_vadjustment()
+            if position < 20:
+                adjustment.set_value(max(0, adjustment.get_value() - 15))
+            elif position > self.pin_container.get_allocated_height() - 20:
+                adjustment.set_value(min(max(0, adjustment.get_upper() - adjustment.get_page_size()),
+                                         adjustment.get_value() + 15))
+        target = self.pin_drop_target(x, y)
+        if target is drag.target:
+            return
+        if drag.target is not None:
+            drag.target.content.get_style_context().remove_class("linuxxy-drop-target")
+        drag.target = target
+        if target is not None and target is not drag.row:
+            target.content.get_style_context().add_class("linuxxy-drop-target")
+
+    def finish_pin_drag(self, x, y):
+        drag = self.pin_drag
+        if drag is None:
+            return
+        self.pin_drag = None
+        if drag.target is not None:
+            drag.target.content.get_style_context().remove_class("linuxxy-drop-target")
+        if drag.active:
+            target = self.pin_drop_target(x, y)
+            if target is not None and self.history.move_pin_to(drag.row.entry_id,
+                                                                target.entry_id):
+                self.refresh()
+        else:
+            self.choose(drag.row)
+
+    def row_release(self, row, event):
+        if event.button == 1 and self.pin_drag is not None and self.pin_drag.row is row:
+            self.finish_pin_drag(event.x_root, event.y_root)
+            return True
         return False
 
     def poll_hover(self):
@@ -590,7 +701,11 @@ class App:
             self.hover_poll_id = None
             return False
         display = Gdk.Display.get_default()
-        _screen, x, y, _mods = display.get_pointer()
+        _screen, x, y, mods = display.get_pointer()
+        if self.pin_drag is not None:
+            self.update_pin_drag(x, y, bool(mods & Gdk.ModifierType.BUTTON1_MASK))
+            self.last_pointer_position = (x, y)
+            return True
         if (x, y) == self.last_pointer_position:
             return True
         self.last_pointer_position = (x, y)
@@ -599,7 +714,7 @@ class App:
         for listbox in (self.pin_rows, self.history_rows):
             if not listbox.get_visible() or not listbox.get_mapped():
                 continue
-            viewport = self.history_scroll if listbox is self.history_rows else self.pin_scroll
+            viewport = self.history_scroll if listbox is self.history_rows else self.pin_container
             viewport_point = viewport.translate_coordinates(self.window, 0, 0)
             if viewport_point is None:
                 continue
@@ -620,17 +735,26 @@ class App:
         return True
 
     def row_click(self, row, event):
-        if event.button == 1:
-            if event.state & Gdk.ModifierType.CONTROL_MASK or (
-                    event.state & Gdk.ModifierType.SHIFT_MASK and
-                    not event.state & Gdk.ModifierType.MOD1_MASK):
-                self.extend_selection(row, bool(event.state & Gdk.ModifierType.SHIFT_MASK))
+        button = event.get_button()[1]
+        state = event.get_state()[1]
+        if button == 1:
+            if state & Gdk.ModifierType.CONTROL_MASK or (
+                    state & Gdk.ModifierType.SHIFT_MASK and
+                    not state & Gdk.ModifierType.MOD1_MASK):
+                self.extend_selection(row, bool(state & Gdk.ModifierType.SHIFT_MASK))
                 return True
-            alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
-            shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
+            if row.pinned and not self.search.get_text() and not state & \
+                    (Gdk.ModifierType.MOD1_MASK | Gdk.ModifierType.MOD4_MASK):
+                _ok, x, y = event.get_root_coords()
+                self.pin_drag = SimpleNamespace(row=row, start_x=x, start_y=y,
+                                                active=False, target=None)
+                self.rows.select_row(row)
+                return True
+            alt = bool(state & Gdk.ModifierType.MOD1_MASK)
+            shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
             self.choose(row, paste=True if alt else None, plain=alt and shift)
             return True
-        if event.button != 3:
+        if button != 3:
             return False
         self.rows.select_row(row)
         menu = Gtk.Menu()
@@ -652,6 +776,8 @@ class App:
             if label == "Start paste queue":
                 item.set_sensitive(len(self.multi_selection) >= 2)
             menu.append(item)
+        self.context_menu = menu
+        menu.connect("deactivate", lambda *_: setattr(self, "context_menu", None))
         menu.show_all()
         menu.popup_at_pointer(event)
         return True
@@ -1167,6 +1293,10 @@ class App:
         return False
 
     def hide_window(self, *_):
+        if self.pin_drag is not None:
+            if self.pin_drag.target is not None:
+                self.pin_drag.target.content.get_style_context().remove_class("linuxxy-drop-target")
+            self.pin_drag = None
         if self.hover_poll_id is not None:
             GLib.source_remove(self.hover_poll_id)
             self.hover_poll_id = None
