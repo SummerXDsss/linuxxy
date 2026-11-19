@@ -175,7 +175,7 @@ class App:
         previous_pin = None
         row_count = 0
         image_count = 0
-        for index, (entry_id, value, pinned, kind, data) in enumerate(self.history.list(
+        for index, (entry_id, value, pinned, kind, data, pin_key) in enumerate(self.history.list(
             self.search.get_text(), self.settings.get("search_mode"),
             self.settings.get("pins_position"), self.settings.get("sort_by")
         )):
@@ -183,6 +183,7 @@ class App:
             row.set_name("linuxxy-row")
             row.entry_id, row.value, row.pinned = entry_id, value, bool(pinned)
             row.kind, row.data = kind, data
+            row.pin_key = pin_key
             row.connect("button-press-event", self.row_click)
             if previous_pin is not None and previous_pin != pinned:
                 row.set_header(Gtk.Separator())
@@ -222,10 +223,12 @@ class App:
             if visual:
                 content.pack_start(visual, False, False, 0)
             content.pack_start(label, True, True, 0)
-            if index < 9:
-                badge = Gtk.Label(label=str(index + 1))
+            if pin_key or index < 9:
+                badge = Gtk.Label(label=pin_key.upper() if pin_key else str(index + 1))
                 badge.set_name("linuxxy-index")
                 content.pack_end(badge, False, False, 4)
+                if pin_key:
+                    badge.set_tooltip_text(f"Ctrl+{pin_key.upper()} copy · Alt+{pin_key.upper()} paste")
             row.add(content)
             self.rows.add(row)
             row_count += 1
@@ -395,6 +398,13 @@ class App:
                 if int(digit) <= len(rows):
                     self.choose(rows[int(digit) - 1], paste=alt)
                 return True
+            key = (digit or "").lower()
+            if key:
+                pinned = next((row for row in self.rows.get_children()
+                               if row.pin_key == key), None)
+                if pinned:
+                    self.choose(pinned, paste=alt, plain=alt and shift)
+                    return True
         if event.keyval == Gdk.KEY_comma and ctrl:
             self.show_settings()
             return True
@@ -430,6 +440,10 @@ class App:
         return False
 
     def search_key(self, _search, event):
+        if event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK):
+            key = (Gdk.keyval_name(event.keyval) or "").lower()
+            if any(row.pin_key == key for row in self.rows.get_children()):
+                return self.on_key(self.window, event)
         if event.keyval == Gdk.KEY_Return:
             return self.on_key(self.window, event)
         if event.keyval == Gdk.KEY_Down:

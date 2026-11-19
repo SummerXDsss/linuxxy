@@ -7,6 +7,8 @@ import hashlib
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
+PIN_KEYS = "bcdefghijklmnorstuxy"
+
 
 class History:
     def __init__(self, path: Path, limit: int = 200):
@@ -30,9 +32,21 @@ class History:
             self.db.execute("ALTER TABLE entries ADD COLUMN copy_count INTEGER")
         if "pin_order" not in columns:
             self.db.execute("ALTER TABLE entries ADD COLUMN pin_order INTEGER")
+        if "pin_key" not in columns:
+            self.db.execute("ALTER TABLE entries ADD COLUMN pin_key TEXT")
         self.db.execute("UPDATE entries SET first_copied_at=copied_at WHERE first_copied_at IS NULL")
         self.db.execute("UPDATE entries SET copy_count=1 WHERE copy_count IS NULL")
         self.db.execute("UPDATE entries SET pin_order=id WHERE pinned=1 AND pin_order IS NULL")
+        assigned = {row[0] for row in self.db.execute(
+            "SELECT pin_key FROM entries WHERE pinned=1 AND pin_key IS NOT NULL"
+        )}
+        for entry_id, in self.db.execute(
+            "SELECT id FROM entries WHERE pinned=1 AND pin_key IS NULL ORDER BY pin_order, id"
+        ).fetchall():
+            key = next((key for key in PIN_KEYS if key not in assigned), None)
+            if key:
+                self.db.execute("UPDATE entries SET pin_key=? WHERE id=?", (key, entry_id))
+                assigned.add(key)
         self.db.commit()
 
     def add(self, value: str):
@@ -90,7 +104,7 @@ class History:
              sort_by: str = "last_copied"):
         rows = self.db.execute(
             "SELECT id, text, pinned, kind, data, first_copied_at, copy_count, "
-            "pin_order, copied_at FROM entries "
+            "pin_order, copied_at, pin_key FROM entries "
             "ORDER BY copied_at DESC, id DESC"
         ).fetchall()
         if query:
@@ -121,15 +135,20 @@ class History:
             if row[2]:
                 return (1 if pins_position == "bottom" else 0, row[7] or row[0], 0)
             return (0 if pins_position == "bottom" else 1, -row[metric], -row[0])
-        return [row[:5] for row in sorted(rows, key=order)]
+        return [row[:5] + (row[9],) for row in sorted(rows, key=order)]
 
     def pin(self, entry_id: int, pinned: bool):
         with self.db:
             next_order = self.db.execute(
                 "SELECT COALESCE(MAX(pin_order), 0) + 1 FROM entries"
             ).fetchone()[0]
-            self.db.execute("UPDATE entries SET pinned=?, pin_order=? WHERE id=?",
-                            (int(pinned), next_order if pinned else None, entry_id))
+            assigned = {row[0] for row in self.db.execute(
+                "SELECT pin_key FROM entries WHERE pinned=1 AND id<>? AND pin_key IS NOT NULL",
+                (entry_id,)
+            )}
+            key = next((key for key in PIN_KEYS if key not in assigned), None) if pinned else None
+            self.db.execute("UPDATE entries SET pinned=?, pin_order=?, pin_key=? WHERE id=?",
+                            (int(pinned), next_order if pinned else None, key, entry_id))
 
     def delete(self, entry_id: int):
         with self.db:

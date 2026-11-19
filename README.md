@@ -36,6 +36,8 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
    Use **Alt+Shift+Enter** or **Alt+Shift+click** to paste text without formatting.
 
 Use **Ctrl+1…9** to copy a visible result or **Alt+1…9** to paste it.
+Pinned entries get persistent letter shortcuts: **Ctrl+letter** copies,
+**Alt+letter** pastes, and **Alt+Shift+letter** pastes plain text.
 Click a row to choose it,
 or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
 **Alt+P** to pin and **Alt+Delete** to delete the selected entry.

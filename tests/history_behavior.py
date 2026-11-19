@@ -38,6 +38,14 @@ with tempfile.TemporaryDirectory() as directory:
         history.add('old')
         assert labels('last_copied')[0] == 'new'
         assert [row[1] for row in history.list(pins_position='bottom')][-1] == 'new'
+        assert history.list()[0][5] == 'b'
+        history.close()
+        history = History(path)
+        assert history.list()[0][5] == 'b'
+        history.pin(entry_id, False)
+        old_id = next(row[0] for row in history.list() if row[1] == 'old')
+        history.pin(old_id, True)
+        assert history.list()[0][5] == 'b'
     finally:
         history.close()
 
