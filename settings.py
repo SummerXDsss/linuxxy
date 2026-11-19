@@ -15,6 +15,8 @@ DEFAULTS = {
     "history_size": 200,
     "check_interval_ms": 500,
     "clear_on_quit": False,
+    "clear_system_clipboard": False,
+    "monitoring_paused": False,
     "popup_position": "cursor",
     "popup_last_position": None,
     "launch_at_login": False,

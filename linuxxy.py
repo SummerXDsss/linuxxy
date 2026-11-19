@@ -39,7 +39,7 @@ class App:
         self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
         self.clipboard_handler = self.clipboard.connect("owner-change", self.on_clipboard_change)
         self.closed = False
-        self.paused = False
+        self.paused = self.settings.get("monitoring_paused")
         self.x11 = None
         self.rich_clipboard = None
         self.return_window = None
@@ -186,7 +186,7 @@ class App:
         self.update_search_visibility()
 
         self.tray = Gtk.StatusIcon.new_from_icon_name("edit-paste")
-        self.tray.set_tooltip_text("Linuxxy")
+        self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
         self.tray.connect("activate", lambda *_: self.toggle_window())
         self.tray.connect("popup-menu", self.tray_menu)
         self.poll_id = GLib.timeout_add(self.settings.get("check_interval_ms"), self.poll_clipboard)
@@ -830,7 +830,15 @@ class App:
 
     def clear(self, *_):
         self.history.clear()
+        self.clear_system_clipboard_if_enabled()
         self.refresh()
+
+    def clear_system_clipboard_if_enabled(self):
+        if self.settings.get("clear_system_clipboard"):
+            self.ignore_own_change_until = time.monotonic() + 1
+            self.clipboard.set_text("", -1)
+            self.clipboard.store()
+            self.last_signature = ("text", "")
 
     def on_key(self, _window, event):
         ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
@@ -901,6 +909,7 @@ class App:
                 self.history.clear_all()
             else:
                 self.history.clear()
+            self.clear_system_clipboard_if_enabled()
             self.refresh()
             return True
         if event.keyval == Gdk.KEY_Return:
@@ -1084,7 +1093,7 @@ class App:
         notebook = Gtk.Notebook()
         layout.pack_start(notebook, True, True, 0)
         grids = {}
-        for title in ("General", "Storage", "Appearance"):
+        for title in ("General", "Storage", "Appearance", "Advanced"):
             grid = Gtk.Grid(column_spacing=16, row_spacing=14)
             grid.set_border_width(16)
             notebook.append_page(grid, Gtk.Label(label=title))
@@ -1171,20 +1180,21 @@ class App:
         save_files = Gtk.CheckButton(label="Save files")
         save_files.set_active(self.settings.get("save_files"))
         grids["Storage"].attach(save_files, 0, 2, 2, 1)
-        field(grids["Storage"], 3, "History items", size)
+        storage_size = Gtk.Box(spacing=9)
+        storage_size.pack_start(size, False, False, 0)
+        storage_size.pack_start(Gtk.Label(label=GLib.format_size(self.history.disk_size())),
+                                False, False, 0)
+        field(grids["Storage"], 3, "History items", storage_size)
         interval = Gtk.SpinButton.new_with_range(100, 5000, 100)
         interval.set_value(self.settings.get("check_interval_ms"))
         field(grids["Storage"], 4, "Clipboard check (ms)", interval)
-        clear_on_quit = Gtk.CheckButton(label="Clear history on quit")
-        clear_on_quit.set_active(self.settings.get("clear_on_quit"))
-        grids["Storage"].attach(clear_on_quit, 0, 5, 2, 1)
         sort_by = Gtk.ComboBoxText()
         for key, label in (("last_copied", "Last copied"),
                            ("first_copied", "First copied"),
                            ("most_copied", "Most copied")):
             sort_by.append(key, label)
         sort_by.set_active_id(self.settings.get("sort_by"))
-        field(grids["Storage"], 6, "Sort by", sort_by)
+        field(grids["Storage"], 5, "Sort by", sort_by)
 
         pins_position = Gtk.ComboBoxText()
         pins_position.append("top", "Top")
@@ -1255,6 +1265,18 @@ class App:
         window_size.pack_start(Gtk.Label(label="Height limit"), False, False, 0)
         window_size.pack_start(popup_height, False, False, 0)
         grids["Appearance"].attach(window_size, 0, 12, 2, 1)
+        pause_monitoring = Gtk.CheckButton(label="Pause clipboard monitoring")
+        pause_monitoring.set_name("linuxxy-pause-monitoring-setting")
+        pause_monitoring.set_active(self.settings.get("monitoring_paused"))
+        grids["Advanced"].attach(pause_monitoring, 0, 0, 2, 1)
+        clear_on_quit = Gtk.CheckButton(label="Clear unpinned history on quit")
+        clear_on_quit.set_name("linuxxy-clear-on-quit-setting")
+        clear_on_quit.set_active(self.settings.get("clear_on_quit"))
+        grids["Advanced"].attach(clear_on_quit, 0, 1, 2, 1)
+        clear_system_clipboard = Gtk.CheckButton(label="Also clear system clipboard when clearing history")
+        clear_system_clipboard.set_name("linuxxy-clear-clipboard-setting")
+        clear_system_clipboard.set_active(self.settings.get("clear_system_clipboard"))
+        grids["Advanced"].attach(clear_system_clipboard, 0, 2, 2, 1)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -1319,10 +1341,14 @@ class App:
                 ("show_title", show_title.get_active()),
                 ("search_visibility", search_visibility.get_active_id()),
                 ("clear_on_quit", clear_on_quit.get_active()),
+                ("clear_system_clipboard", clear_system_clipboard.get_active()),
+                ("monitoring_paused", pause_monitoring.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),
             ):
                 self.settings.set(key, value, save=False)
             self.settings.save()
+            self.paused = self.settings.get("monitoring_paused")
+            self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
             self.content_width = self.settings.get("popup_width")
             self.main_column.set_size_request(self.content_width, -1)
             set_autostart(self.settings.get("launch_at_login"))
@@ -1342,6 +1368,7 @@ class App:
 
     def toggle_pause(self):
         self.paused = not self.paused
+        self.settings.set("monitoring_paused", self.paused)
         self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
 
     def toggle_preview(self):
@@ -1521,7 +1548,8 @@ class App:
         if GLib.MainContext.default().find_source_by_id(self.poll_id):
             GLib.source_remove(self.poll_id)
         if self.settings.get("clear_on_quit"):
-            self.history.clear_all()
+            self.history.clear()
+            self.clear_system_clipboard_if_enabled()
         if self.x11:
             self.x11.close()
         if self.rich_clipboard:

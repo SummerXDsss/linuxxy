@@ -83,11 +83,12 @@ with tempfile.TemporaryDirectory() as directory:
             notebook.set_current_page(number)
             def take():
                 try:
-                    shot(app.preferences, ('general.png', 'storage.png', 'appearance.png')[number])
+                    shot(app.preferences, ('general.png', 'storage.png',
+                                           'appearance.png', 'advanced.png')[number])
                 except Exception:
                     app.quit()
                     raise
-                if number < 2:
+                if number < 3:
                     page(number + 1)
                 else:
                     appearance = notebook.get_nth_page(2)

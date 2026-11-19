@@ -14,6 +14,7 @@ _UNSET = object()
 class History:
     def __init__(self, path: Path, limit: int = 200):
         self.limit = limit
+        self.path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -109,6 +110,10 @@ class History:
         self.limit = limit
         with self.db:
             self._prune()
+
+    def disk_size(self):
+        return sum(candidate.stat().st_size for candidate in
+                   (self.path, Path(str(self.path) + "-wal")) if candidate.exists())
 
     def list(self, query: str = "", mode: str = "exact", pins_position: str = "top",
              sort_by: str = "last_copied"):

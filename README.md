@@ -80,7 +80,7 @@ and image dimensions and size. This shortcut is configurable. The side preview
 also opens after the selected item rests for 1.5 seconds by default. Drag the
 divider between the list and preview to resize them; both widths are remembered.
 Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
-the popup is open. General, Storage, and Appearance pages cover the opening
+the popup is open. General, Storage, Appearance, and Advanced pages cover the opening
 shortcut, item pin/delete/preview shortcuts, default paste and formatting behavior,
 text/image/file capture, history
 limit, clipboard check interval, history sorting (last copied, first copied, or most copied),
@@ -90,9 +90,12 @@ active window, screen center, or last position), automatic preview
 and its delay, image thumbnail height, hex color swatches, visible whitespace
 symbols, search field visibility (always, while typing, or hidden), footer
 visibility, an optional title before the search field, optional source application
-icons, popup width and height limit, clear-on-quit behavior, and launch
+icons, popup width and height limit, clear-on-quit behavior, optional system
+clipboard clearing when history is cleared, pause monitoring, and launch
 at login. When the search field is hidden, typing still filters the history;
 Backspace removes the last character.
+Storage shows the current history database size. Clearing history on quit keeps
+pinned items; the separate clear-all shortcut removes them.
 Drag the popup's title to move it; the last-position option reopens it there.
 Preferences are saved in
 `$XDG_CONFIG_HOME/linuxxy/settings.json`.
@@ -152,6 +155,9 @@ selection updates, including pointer hover. It also drags the divider with X11
 mouse events and checks saved widths.
 The [window size test](tests/window_size_smoke.py) changes width and height in
 Appearance settings, reopens a long history, and captures the resized popup.
+The [Advanced settings test](tests/advanced_settings_smoke.py) changes the real
+settings controls, checks paused monitoring and clipboard clearing, and verifies
+that pinned items survive clear-on-quit.
 The [shortcut behavior test](tests/action_shortcuts_behavior.py) checks validation,
 conflicts, disabled keys, and persistence.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy
