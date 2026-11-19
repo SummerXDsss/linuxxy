@@ -7,6 +7,9 @@ from pathlib import Path
 
 DEFAULTS = {
     "shortcut": "Super+Shift+V",
+    "pin_shortcut": "Alt+P",
+    "delete_shortcut": "Alt+Delete",
+    "preview_shortcut": "Ctrl+Space",
     "paste_by_default": False,
     "remove_formatting_by_default": False,
     "history_size": 200,
@@ -65,6 +68,9 @@ class Settings:
         if key == "shortcut":
             from x11 import parse_shortcut
             parse_shortcut(value)
+        elif key in ("pin_shortcut", "delete_shortcut", "preview_shortcut"):
+            from action_shortcuts import normalize_action_shortcut
+            value = normalize_action_shortcut(value)
         elif key == "search_mode":
             if value not in ("exact", "fuzzy", "regex", "mixed"):
                 raise ValueError("Invalid search mode")

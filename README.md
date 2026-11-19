@@ -55,7 +55,8 @@ Pinned entries get persistent letter shortcuts: **Ctrl+letter** copies,
 **Alt+letter** pastes, and **Alt+Shift+letter** pastes plain text.
 Click a row to choose it,
 or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
-**Alt+P** to pin and **Alt+Delete** to delete the selected entry.
+**Alt+P** to pin and **Alt+Delete** to delete the selected entry. These shortcuts
+can be changed or cleared in General settings.
 Pinned entries can be moved with **Alt+Up/Down** or the right-click menu;
 their letter shortcuts stay with each entry.
 Press **F2** or choose **Edit…** from the right-click menu to change an item's
@@ -70,11 +71,13 @@ You can also add entries to the queue from the right-click menu. Choosing
 another item or copying new content cancels the queue.
 Use **Ctrl+Alt+Delete** to clear unpinned history or **Ctrl+Alt+Shift+Delete**
 to clear all history, including pinned entries. Clear unpinned history from the footer.
-Press **Space** on a selected result to preview its full text or image. A small
+Press **Ctrl+Space** to open or close a selected result's full text or image preview. This
+shortcut is also configurable. A small
 preview also appears after the selected item rests for 1.5 seconds by default.
 Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
 the popup is open. General, Storage, and Appearance pages cover the opening
-shortcut, default paste and formatting behavior, text/image/file capture, history
+shortcut, item pin/delete/preview shortcuts, default paste and formatting behavior,
+text/image/file capture, history
 limit, clipboard check interval, history sorting (last copied, first copied, or most copied),
 search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
 underline, or color), pinned item position, popup position (pointer, tray icon,
@@ -136,6 +139,10 @@ the popup at each position in a real X11 session. Without a tray host, the tray
 position falls back to the pointer.
 The [shortcut cycle test](tests/shortcut_cycle_smoke.py) exercises held modifiers,
 repeated opening-key presses, and selection on release with real X11 events.
+The [action shortcut test](tests/action_shortcuts_smoke.py) records new pin,
+delete, and preview keys in the real settings window and uses them in the popup.
+The [shortcut behavior test](tests/action_shortcuts_behavior.py) checks validation,
+conflicts, disabled keys, and persistence.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy
 ranking, and snippets that keep later matches visible.
 The [install test](tests/install_smoke.py) checks a temporary user installation,

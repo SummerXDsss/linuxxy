@@ -17,7 +17,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk
 
-from history import History
+from history import History, PIN_KEYS
 from autostart import set_enabled as set_autostart
 from settings import Settings
 from x11 import X11
@@ -25,6 +25,8 @@ from x11_clipboard import X11Clipboard
 from search import snippet, visible_title
 from paste_keys import PasteKeys
 from color_swatch import rgba
+from action_shortcuts import (action_shortcut_from_event, matches_action_shortcut,
+                              validate_action_shortcuts)
 
 
 class App:
@@ -734,6 +736,18 @@ class App:
                         self.search.grab_focus()
                         self.search.set_position(-1)
                     return True
+        if matches_action_shortcut(self.settings.get("pin_shortcut"), event):
+            self.toggle_pin()
+            return True
+        if matches_action_shortcut(self.settings.get("delete_shortcut"), event):
+            self.delete_selected()
+            return True
+        if matches_action_shortcut(self.settings.get("preview_shortcut"), event):
+            if getattr(self, "preview", None):
+                self.cancel_preview()
+            elif self.selected():
+                self.show_preview()
+            return True
         if event.keyval == Gdk.KEY_F2:
             self.edit_selected()
             return True
@@ -770,21 +784,12 @@ class App:
         if event.keyval == Gdk.KEY_Escape:
             self.hide_window()
             return True
-        if event.keyval == Gdk.KEY_p and alt:
-            self.toggle_pin()
-            return True
         if event.keyval == Gdk.KEY_Delete and ctrl and alt:
             if shift:
                 self.history.clear_all()
             else:
                 self.history.clear()
             self.refresh()
-            return True
-        if event.keyval == Gdk.KEY_Delete and alt:
-            self.delete_selected()
-            return True
-        if event.keyval == Gdk.KEY_space and self.selected() and not self.search.is_focus():
-            self.show_preview()
             return True
         if event.keyval == Gdk.KEY_Return:
             row = self.selected() or next(iter(self.rows.get_children()), None)
@@ -799,6 +804,9 @@ class App:
         return False
 
     def search_key(self, _search, event):
+        if any(matches_action_shortcut(self.settings.get(name), event)
+               for name in ("pin_shortcut", "delete_shortcut", "preview_shortcut")):
+            return self.on_key(self.window, event)
         if event.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.MOD1_MASK):
             key = (Gdk.keyval_name(event.keyval) or "").lower()
             if any(row.pin_key == key for row in self.rows.get_children()):
@@ -973,21 +981,65 @@ class App:
             "release them to choose."
         )
         field(grids["General"], 0, "Open shortcut", shortcut)
+
+        def shortcut_recorder(setting):
+            entry = Gtk.Entry(text=self.settings.get(setting))
+            entry.set_editable(False)
+            entry.set_width_chars(17)
+            entry.set_placeholder_text("Click, then press keys")
+            entry.set_tooltip_text("Click and press a shortcut. Use Clear to disable it.")
+
+            def record(_entry, event):
+                if event.keyval == Gdk.KEY_Escape:
+                    return True
+                if event.keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab) and not \
+                        event.state & (Gdk.ModifierType.CONTROL_MASK |
+                                       Gdk.ModifierType.MOD1_MASK |
+                                       Gdk.ModifierType.MOD4_MASK):
+                    return False
+                try:
+                    recorded = action_shortcut_from_event(event)
+                except ValueError as error:
+                    entry.set_tooltip_text(str(error))
+                    return True
+                if recorded is not None:
+                    entry.set_text(recorded)
+                    entry.set_tooltip_text("Click and press a shortcut. Use Clear to disable it.")
+                return True
+
+            entry.connect("key-press-event", record)
+            clear = Gtk.Button(label="Clear")
+            clear.connect("clicked", lambda *_: entry.set_text(""))
+            control = Gtk.Box(spacing=5)
+            control.pack_start(entry, True, True, 0)
+            control.pack_start(clear, False, False, 0)
+            return entry, control
+
+        pin_shortcut, pin_control = shortcut_recorder("pin_shortcut")
+        field(grids["General"], 1, "Pin item", pin_control)
+        delete_shortcut, delete_control = shortcut_recorder("delete_shortcut")
+        field(grids["General"], 2, "Delete item", delete_control)
+        preview_shortcut, preview_control = shortcut_recorder("preview_shortcut")
+        field(grids["General"], 3, "Preview item", preview_control)
         paste = Gtk.CheckButton(label="Paste by default (Alt+Enter reverses)")
         paste.set_active(self.settings.get("paste_by_default"))
-        grids["General"].attach(paste, 0, 1, 2, 1)
+        grids["General"].attach(paste, 0, 4, 2, 1)
         remove_formatting = Gtk.CheckButton(label="Remove formatting by default (Alt+Shift reverses)")
         remove_formatting.set_active(self.settings.get("remove_formatting_by_default"))
-        grids["General"].attach(remove_formatting, 0, 2, 2, 1)
+        grids["General"].attach(remove_formatting, 0, 5, 2, 1)
         search_mode = Gtk.ComboBoxText()
         for key, label in (("exact", "Exact"), ("fuzzy", "Fuzzy"),
                            ("regex", "Regular expression"), ("mixed", "Mixed")):
             search_mode.append(key, label)
         search_mode.set_active_id(self.settings.get("search_mode"))
-        field(grids["General"], 3, "Search mode", search_mode)
+        field(grids["General"], 6, "Search mode", search_mode)
         launch_at_login = Gtk.CheckButton(label="Launch at login")
         launch_at_login.set_active(self.settings.get("launch_at_login"))
-        grids["General"].attach(launch_at_login, 0, 4, 2, 1)
+        grids["General"].attach(launch_at_login, 0, 7, 2, 1)
+        shortcut_hint = Gtk.Label(label="Click a shortcut field, then press keys. Letters and digits need Ctrl, Alt, or Super.")
+        shortcut_hint.set_line_wrap(True)
+        shortcut_hint.set_xalign(0)
+        grids["General"].attach(shortcut_hint, 0, 8, 2, 1)
 
         size = Gtk.SpinButton.new_with_range(1, 10000, 1)
         size.set_value(self.settings.get("history_size"))
@@ -1087,6 +1139,9 @@ class App:
             try:
                 from x11 import parse_shortcut
                 parse_shortcut(new_shortcut)
+                validate_action_shortcuts(new_shortcut,
+                                          (pin_shortcut.get_text(), delete_shortcut.get_text(),
+                                           preview_shortcut.get_text()), PIN_KEYS)
                 if self.x11 and new_shortcut != self.settings.get("shortcut"):
                     new_x11 = X11(self.shortcut_pressed, new_shortcut)
                 elif not self.x11 and os.environ.get("XDG_SESSION_TYPE", "x11") == "x11":
@@ -1105,6 +1160,9 @@ class App:
                 self.x11 = new_x11
             for key, value in (
                 ("shortcut", new_shortcut),
+                ("pin_shortcut", pin_shortcut.get_text()),
+                ("delete_shortcut", delete_shortcut.get_text()),
+                ("preview_shortcut", preview_shortcut.get_text()),
                 ("paste_by_default", paste.get_active()),
                 ("remove_formatting_by_default", remove_formatting.get_active()),
                 ("history_size", size.get_value_as_int()),
@@ -1213,7 +1271,9 @@ class App:
             window.present()
 
     def close_preview(self, event):
-        if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_space):
+        if event.keyval == Gdk.KEY_Escape or matches_action_shortcut(
+            self.settings.get("preview_shortcut"), event
+        ):
             self.preview.destroy()
             return True
         return False

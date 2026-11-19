@@ -144,7 +144,7 @@ def main():
             keys('Escape')
             wait_for(lambda: window_id('Edit clipboard item') is None)
             activate(popup)
-            keys('space')
+            keys('Control_L', 'space')
             preview = wait_for(lambda: window_id('Linuxxy Preview'))
             screenshot(preview, 'ui_preview.png')
             keys('Escape')
