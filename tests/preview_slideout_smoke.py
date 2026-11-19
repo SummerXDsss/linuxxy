@@ -12,7 +12,8 @@ gi.require_version('Gdk', '3.0')
 gi.require_version('GdkX11', '3.0')
 gi.require_version('GdkPixbuf', '2.0')
 from gi.repository import Gdk, GdkPixbuf, GdkX11, GLib, Gtk
-from Xlib import display
+from Xlib import X, display
+from Xlib.ext import xtest
 
 from ui_smoke import activate, keys, screenshot
 
@@ -69,6 +70,30 @@ try:
             assert 'Dimensions: 160×80' in details
             assert 'Copies: 1' in details
             screenshot(popup, 'ui_preview_image_right.png')
+            start_preview_width = app.preview_width
+            start_content_width = app.content_width
+            origin_x, origin_y = app.window.get_position()
+            divider_x, divider_y = app.preview_divider.translate_coordinates(app.window, 3, 120)
+            root_x, root_y = origin_x + divider_x, origin_y + divider_y
+            connection = display.Display()
+            xtest.fake_input(connection, X.MotionNotify, x=root_x, y=root_y)
+            connection.sync()
+            pump(.1)
+            xtest.fake_input(connection, X.ButtonPress, 1)
+            connection.sync()
+            pump(.1)
+            xtest.fake_input(connection, X.MotionNotify, x=root_x - 60, y=root_y)
+            connection.sync()
+            pump(.2)
+            xtest.fake_input(connection, X.ButtonRelease, 1)
+            connection.sync()
+            connection.close()
+            pump()
+            assert app.preview_width >= start_preview_width + 50
+            assert app.content_width <= start_content_width - 50
+            assert Settings().get('preview_width') == app.preview_width
+            assert Settings().get('popup_width') == app.content_width
+            screenshot(popup, 'ui_preview_resized.png')
 
             keys('Down')
             keys('Down')
@@ -96,13 +121,13 @@ try:
             assert app.preview_entry_id == image_row.entry_id
             keys('Control_L', 'space')
             pump()
-            assert app.preview is None and app.window.get_size()[0] == 440
+            assert app.preview is None and app.window.get_size()[0] == app.content_width
             app.preview_button.clicked()
             pump()
             assert app.preview is app.preview_pane
             app.preview_button.clicked()
             pump()
-            assert app.preview is None and app.window.get_size()[0] == 440
+            assert app.preview is None and app.window.get_size()[0] == app.content_width
             keys('Escape')
             pump()
             assert not app.window.get_visible()
@@ -126,7 +151,14 @@ try:
             pump()
             assert app.preview is app.preview_pane and app.preview_side == 'left'
             assert app.preview_entry_id == app.selected().entry_id
+            assert app.preview_width == Settings().get('preview_width')
+            assert app.content_width == Settings().get('popup_width')
             screenshot(popup, 'ui_preview_image_left.png')
+            main_x = app.window.get_position()[0] + app.preview_width + app.preview_divider_width
+            keys('Control_L', 'space')
+            pump()
+            assert app.preview is None
+            assert abs(app.window.get_position()[0] - main_x) <= 4
             print('Preview slideout, selection updates, and both placements passed')
         finally:
             app.quit()

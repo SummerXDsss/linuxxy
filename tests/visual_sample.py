@@ -63,6 +63,15 @@ with tempfile.TemporaryDirectory() as directory:
             assert app.preview is app.preview_pane
             assert app.preview_entry_id == app.rows.get_children()[1].entry_id
             app.cancel_preview()
+        except Exception:
+            app.quit()
+            raise
+        GLib.timeout_add(150, render_closed)
+        return False
+
+    def render_closed():
+        try:
+            assert app.window.get_size()[0] == app.content_width
             shot(app.window, 'popup.png')
             app.settings.set('preview_delay_ms', 1500, save=False)
             app.show_settings()

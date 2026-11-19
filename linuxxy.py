@@ -49,7 +49,10 @@ class App:
         self.preview = None
         self.preview_entry_id = None
         self.preview_side = "right"
-        self.preview_width = 360
+        self.preview_width = self.settings.get("preview_width")
+        self.content_width = self.settings.get("popup_width")
+        self.preview_divider_width = 7
+        self.preview_drag = None
         self.preview_move_id = None
         self.pending_popup_origin = None
         self.multi_selection = set()
@@ -61,7 +64,7 @@ class App:
         self.application_info = None
 
         self.window = Gtk.Window(title="Linuxxy")
-        self.window.set_default_size(440, 120)
+        self.window.set_default_size(self.content_width, 120)
         self.window.set_decorated(False)
         self.window.set_resizable(True)
         self.window.set_keep_above(True)
@@ -74,8 +77,9 @@ class App:
         self.popup_layout = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         self.window.add(self.popup_layout)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.main_column = box
         box.set_border_width(7)
-        box.set_size_request(440, -1)
+        box.set_size_request(self.content_width, -1)
         self.popup_layout.pack_start(box, False, False, 0)
         self.search_line = Gtk.Box(spacing=5)
         self.search_line.set_no_show_all(True)
@@ -142,6 +146,19 @@ class App:
         hint = Gtk.Label(label="↵ Copy  ·  Alt+↵ Paste")
         hint.set_xalign(1)
         footer.pack_end(hint, False, False, 4)
+        self.preview_divider = Gtk.EventBox()
+        self.preview_divider.set_name("linuxxy-preview-divider")
+        self.preview_divider.set_no_show_all(True)
+        self.preview_divider.set_size_request(self.preview_divider_width, -1)
+        self.preview_divider.add_events(Gdk.EventMask.BUTTON_PRESS_MASK |
+                                        Gdk.EventMask.BUTTON_RELEASE_MASK |
+                                        Gdk.EventMask.POINTER_MOTION_MASK)
+        self.preview_divider.connect("button-press-event", self.preview_drag_start)
+        self.preview_divider.connect("motion-notify-event", self.preview_drag_motion)
+        self.preview_divider.connect("button-release-event", self.preview_drag_end)
+        self.preview_divider.connect("realize", self.preview_divider_realize)
+        self.popup_layout.pack_start(self.preview_divider, False, False, 0)
+        self.preview_divider.hide()
         self.preview_pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.preview_pane.set_name("linuxxy-preview")
         self.preview_pane.set_no_show_all(True)
@@ -204,6 +221,7 @@ class App:
             #linuxxy-color-swatch { border: 1px solid #888; border-radius: 2px; }
             #linuxxy-preview { background: #222327; border-left: 1px solid #4a4b50; }
             #linuxxy-preview.left { border-left: none; border-right: 1px solid #4a4b50; }
+            #linuxxy-preview-divider { background: #34353a; }
             #linuxxy-preview-heading { color: #cccccc; font-size: 11px; }
             #linuxxy-preview button { color: #cccccc; }
             #linuxxy-preview-metadata { color: #b6b6ba; font-size: 11px; }
@@ -414,7 +432,7 @@ class App:
 
     def resize_popup(self, count, image_count=0):
         # Match the content instead of leaving a large empty window behind.
-        visible = min(count, 9)
+        visible = count
         image_extra = max(0, self.settings.get("image_max_height") - 30)
         height = 105 + max(34, visible * 40 + min(image_count, visible) * image_extra)
         if not self.search_line.get_visible():
@@ -423,7 +441,14 @@ class App:
             height -= 14
         if not self.settings.get("show_footer"):
             height -= 26
-        self.popup_size = (440, min(height, 470))
+        display = Gdk.Display.get_default()
+        _screen, pointer_x, pointer_y, _mods = display.get_pointer()
+        monitor = (display.get_monitor_at_window(self.window.get_window())
+                   if self.window.get_visible() else
+                   display.get_monitor_at_point(pointer_x, pointer_y))
+        work = monitor.get_workarea()
+        height_limit = min(self.settings.get("popup_max_height"), max(120, work.height - 20))
+        self.popup_size = (self.content_width, min(height, height_limit))
         if self.preview is not None:
             self.layout_preview()
         else:
@@ -513,8 +538,10 @@ class App:
         if self.preview is not None:
             x, y = self.window.get_position()
             if self.preview_side == "left":
-                x += self.preview_width
+                x += self.preview_width + self.preview_divider_width
             self.preview_pane.hide()
+            self.preview_divider.hide()
+            self.preview_drag = None
             self.preview = None
             self.preview_auto = False
             self.preview_entry_id = None
@@ -920,7 +947,7 @@ class App:
         if self.window.get_visible():
             x, y = self.pending_popup_origin or self.window.get_position()
             if self.preview is not None and self.preview_side == "left":
-                x += self.preview_width
+                x += self.preview_width + self.preview_divider_width
             self.settings.set("popup_last_position", [x, y])
 
     def reset_shortcut_cycle(self):
@@ -1216,6 +1243,18 @@ class App:
         show_title = Gtk.CheckButton(label="Show title before search field")
         show_title.set_active(self.settings.get("show_title"))
         grids["Appearance"].attach(show_title, 0, 11, 2, 1)
+        popup_width = Gtk.SpinButton.new_with_range(320, 1000, 10)
+        popup_width.set_name("linuxxy-popup-width-setting")
+        popup_width.set_value(self.settings.get("popup_width"))
+        popup_height = Gtk.SpinButton.new_with_range(180, 2000, 10)
+        popup_height.set_name("linuxxy-popup-height-setting")
+        popup_height.set_value(self.settings.get("popup_max_height"))
+        window_size = Gtk.Box(spacing=8)
+        window_size.pack_start(Gtk.Label(label="Popup width"), False, False, 0)
+        window_size.pack_start(popup_width, False, False, 0)
+        window_size.pack_start(Gtk.Label(label="Height limit"), False, False, 0)
+        window_size.pack_start(popup_height, False, False, 0)
+        grids["Appearance"].attach(window_size, 0, 12, 2, 1)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -1266,6 +1305,8 @@ class App:
                 ("sort_by", sort_by.get_active_id()),
                 ("pins_position", pins_position.get_active_id()),
                 ("popup_position", position.get_active_id()),
+                ("popup_width", popup_width.get_value_as_int()),
+                ("popup_max_height", popup_height.get_value_as_int()),
                 ("show_footer", show_footer.get_active()),
                 ("open_preview_automatically", auto_preview.get_active()),
                 ("preview_delay_ms", preview_delay.get_value_as_int()),
@@ -1282,6 +1323,8 @@ class App:
             ):
                 self.settings.set(key, value, save=False)
             self.settings.save()
+            self.content_width = self.settings.get("popup_width")
+            self.main_column.set_size_request(self.content_width, -1)
             set_autostart(self.settings.get("launch_at_login"))
             self.history.set_limit(self.settings.get("history_size"))
             self.footer.set_no_show_all(not self.settings.get("show_footer"))
@@ -1390,19 +1433,20 @@ class App:
                 GLib.source_remove(self.preview_move_id)
                 self.preview_move_id = None
         elif self.preview_pane.get_visible() and self.preview_side == "left":
-            x += self.preview_width
+            x += self.preview_width + self.preview_divider_width
         display = Gdk.Display.get_default()
-        monitor = display.get_monitor_at_point(x + 220, y)
+        monitor = display.get_monitor_at_point(x + self.content_width // 2, y)
         work = monitor.get_workarea()
-        width = min(360, max(160, work.width - 440))
-        right_space = work.x + work.width - x - 440
+        width = min(self.settings.get("preview_width"),
+                    max(1, work.width - self.content_width - self.preview_divider_width))
+        right_space = work.x + work.width - x - self.content_width
         left_space = x - work.x
-        if right_space >= width or right_space >= left_space:
+        if right_space >= width + self.preview_divider_width or right_space >= left_space:
             side = "right"
-            origin = min(x, work.x + work.width - 440 - width)
+            origin = min(x, work.x + work.width - self.content_width - width - self.preview_divider_width)
         else:
             side = "left"
-            origin = max(work.x, x - width)
+            origin = max(work.x, x - width - self.preview_divider_width)
         origin = max(work.x, origin)
         self.preview_side = side
         self.preview_width = width
@@ -1412,13 +1456,58 @@ class App:
             style.add_class("left")
         else:
             style.remove_class("left")
-        self.popup_layout.reorder_child(self.preview_pane, 0 if side == "left" else 1)
+        if side == "left":
+            self.popup_layout.reorder_child(self.preview_pane, 0)
+            self.popup_layout.reorder_child(self.preview_divider, 1)
+            self.popup_layout.reorder_child(self.main_column, 2)
+        else:
+            self.popup_layout.reorder_child(self.main_column, 0)
+            self.popup_layout.reorder_child(self.preview_divider, 1)
+            self.popup_layout.reorder_child(self.preview_pane, 2)
         self.preview_pane.set_size_request(width, -1)
         for child in self.preview_pane.get_children():
             child.show_all()
         self.preview_pane.show()
-        self.window.resize(440 + width, max(self.popup_size[1], 360))
+        self.preview_divider.show()
+        self.window.resize(self.content_width + self.preview_divider_width + width,
+                           max(self.popup_size[1], 360))
         self.window.move(origin, y)
+
+    def preview_divider_realize(self, widget):
+        widget.get_window().set_cursor(Gdk.Cursor.new(Gdk.CursorType.SB_H_DOUBLE_ARROW))
+
+    def preview_drag_start(self, _widget, event):
+        if event.button != 1 or self.preview is None:
+            return False
+        self.preview_drag = (event.x_root, self.preview_width, self.content_width)
+        return True
+
+    def preview_drag_motion(self, _widget, event):
+        if self.preview_drag is None:
+            return False
+        start_x, start_width, start_content_width = self.preview_drag
+        delta = event.x_root - start_x
+        desired = round(start_width + (delta if self.preview_side == "left" else -delta))
+        total = start_width + start_content_width
+        width = max(200, min(desired, 800, total - 320))
+        if width == self.preview_width:
+            return True
+        self.preview_width = width
+        self.content_width = total - width
+        self.main_column.set_size_request(self.content_width, -1)
+        self.preview_pane.set_size_request(width, -1)
+        self.popup_size = (self.content_width, self.popup_size[1])
+        return True
+
+    def preview_drag_end(self, _widget, event):
+        if event.button != 1 or self.preview_drag is None:
+            return False
+        self.preview_drag_motion(_widget, event)
+        self.preview_drag = None
+        if 200 <= self.preview_width <= 800:
+            self.settings.set("preview_width", self.preview_width)
+            self.settings.set("popup_width", self.content_width)
+        return True
 
     def close(self):
         if self.closed:

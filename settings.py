@@ -22,6 +22,9 @@ DEFAULTS = {
     "sort_by": "last_copied",
     "open_preview_automatically": True,
     "preview_delay_ms": 1500,
+    "preview_width": 400,
+    "popup_width": 440,
+    "popup_max_height": 800,
     "highlight_match": "bold",
     "image_max_height": 40,
     "show_hex_color_swatch": True,
@@ -97,6 +100,14 @@ class Settings:
         elif key == "image_max_height":
             if type(value) is not int or not 1 <= value <= 200:
                 raise ValueError("Invalid image height")
+        elif key in ("preview_width", "popup_width"):
+            maximum = 800 if key == "preview_width" else 1000
+            minimum = 200 if key == "preview_width" else 320
+            if type(value) is not int or not minimum <= value <= maximum:
+                raise ValueError(f"Invalid {key}")
+        elif key == "popup_max_height":
+            if type(value) is not int or not 180 <= value <= 2000:
+                raise ValueError("Invalid popup height limit")
         elif key in ("history_size", "check_interval_ms", "preview_delay_ms"):
             maximum = 10000 if key == "history_size" else 100000 if key == "preview_delay_ms" else 5000
             minimum = 200 if key == "preview_delay_ms" else 1
