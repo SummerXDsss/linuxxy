@@ -54,7 +54,7 @@ class X11:
         while self.display.pending_events():
             event = self.display.next_event()
             if event.type == X.KeyPress and event.detail == self.keycode:
-                self.on_shortcut()
+                self.on_shortcut(event.time)
         return True
 
     def active_window(self):

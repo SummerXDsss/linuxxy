@@ -77,6 +77,13 @@ with tempfile.TemporaryDirectory() as directory:
 
     def render_preview():
         assert app.preview and app.preview_auto and not app.preview.get_accept_focus()
+        popup_x, popup_y = app.window.get_position()
+        popup_width, popup_height = app.window.get_size()
+        preview_x, preview_y = app.preview.get_position()
+        preview_width, preview_height = app.preview.get_size()
+        assert (preview_x + preview_width <= popup_x or preview_x >= popup_x + popup_width or
+                preview_y + preview_height <= popup_y or preview_y >= popup_y + popup_height), \
+               'Automatic preview overlaps the popup'
         shot(app.preview, 'auto_preview.png')
         return False
 

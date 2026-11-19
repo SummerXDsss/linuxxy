@@ -17,7 +17,18 @@ On Debian/Ubuntu, install the Python dependencies with:
 sudo apt install python3-gi gir1.2-gtk-3.0 python3-xlib
 ```
 
-## Run
+## Install
+
+```sh
+python3 install.py
+```
+
+Linuxxy then appears in the app menu. Installation stays in `~/.local` and
+does not require administrator access. To remove the application, run
+`python3 ~/.local/share/linuxxy/install.py --uninstall`; your history and
+preferences are kept.
+
+## Run from source
 
 ```sh
 python3 linuxxy.py
@@ -72,7 +83,7 @@ and copyright notice are preserved in [LICENSE-Maccy](LICENSE-Maccy).
 
 The [UI smoke test](tests/ui_smoke.py) starts Linuxxy and a separate GTK paste
 target, sends real X11 keyboard shortcuts, and saves screenshots of the popup,
-preview, preferences, and pasted result to [screenshots](screenshots). The
+preview, preferences, desktop, and pasted result to [screenshots](screenshots). The
 [visual sample](tests/visual_sample.py) renders the popup and all three settings
 pages with known sample data. These scripts need `wmctrl`, `xwd`, and `ffmpeg`
 in addition to the runtime dependencies. Run the smoke test from an X11
@@ -81,3 +92,5 @@ The [format smoke test](tests/formats_smoke.py) verifies HTML and file copying
 between separate X11 applications and restores the clipboard afterward.
 The [history test](tests/history_behavior.py) verifies migration of older data,
 copy counts, sorting, and pin order.
+The [install test](tests/install_smoke.py) checks a temporary user installation,
+app-menu entry, launch, uninstall, and preservation of history.

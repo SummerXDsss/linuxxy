@@ -209,8 +209,6 @@ class App:
             label.set_ellipsize(3)
             label.set_margin_top(4)
             label.set_margin_bottom(4)
-            if kind == "text":
-                row.set_tooltip_text(value[:10000])
             content = Gtk.Box(spacing=8)
             content.set_border_width(4)
             row.content = content
@@ -460,7 +458,7 @@ class App:
         self.search.set_text("")
         return True
 
-    def toggle_window(self):
+    def toggle_window(self, event_time=Gdk.CURRENT_TIME):
         if self.window.get_visible():
             self.hide_window()
         else:
@@ -477,7 +475,7 @@ class App:
                 y = max(work.y, min(y, work.y + work.height - height))
                 self.window.move(x, y)
             self.window.show_all()
-            self.window.present()
+            self.window.present_with_time(event_time)
             self.search.grab_focus()
             self.schedule_preview()
 
@@ -657,8 +655,10 @@ class App:
         self.cancel_preview()
         preview_text = (row.data.decode("utf-8").replace("\r", "")
                         if row.kind == "files" else row.value)
-        window = Gtk.Window(title="Linuxxy Preview")
-        window.set_transient_for(self.window)
+        window = Gtk.Window(type=Gtk.WindowType.POPUP if automatic else Gtk.WindowType.TOPLEVEL)
+        window.set_title("Linuxxy Preview")
+        if not automatic:
+            window.set_transient_for(self.window)
         if automatic and row.kind != "image":
             lines = preview_text.splitlines() or [""]
             wrapped_lines = sum(max(1, (len(line) + 49) // 50) for line in lines)
@@ -671,7 +671,6 @@ class App:
             window.set_accept_focus(False)
             window.set_decorated(False)
             window.set_keep_above(True)
-            window.set_type_hint(Gdk.WindowTypeHint.TOOLTIP)
             window.set_skip_taskbar_hint(True)
         window.connect("key-press-event", lambda _w, event: self.close_preview(event))
         window.connect("destroy", lambda *_: setattr(self, "preview", None))
@@ -692,23 +691,22 @@ class App:
             text.set_right_margin(12)
             text.get_buffer().set_text(preview_text)
             scroll.add(text)
-        self.preview = window
-        self.preview_auto = automatic
-        window.show_all()
         if automatic:
             popup_x, popup_y = self.window.get_position()
             popup_width, _ = self.window.get_size()
             display = Gdk.Display.get_default()
             monitor = display.get_monitor_at_window(self.window.get_window())
             work = monitor.get_workarea()
-            width, height = window.get_size()
             x = popup_x + popup_width + 8
             if x + width > work.x + work.width:
                 x = popup_x - width - 8
             x = max(work.x, min(x, work.x + work.width - width))
             y = max(work.y, min(popup_y, work.y + work.height - height))
             window.move(x, y)
-        else:
+        self.preview = window
+        self.preview_auto = automatic
+        window.show_all()
+        if not automatic:
             window.present()
 
     def close_preview(self, event):

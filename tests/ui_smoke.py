@@ -56,7 +56,7 @@ def ensure_keyboard_available():
     root = connection.screen().root
     status = root.grab_keyboard(False, X.GrabModeAsync, X.GrabModeAsync, X.CurrentTime)
     if status == X.GrabSuccess:
-        root.ungrab_keyboard(X.CurrentTime)
+        connection.ungrab_keyboard(X.CurrentTime)
     connection.close()
     if status != X.GrabSuccess:
         raise RuntimeError('Another desktop application currently holds the keyboard; retry later')
@@ -80,6 +80,14 @@ def screenshot(xid, name):
     time.sleep(.3)
     with tempfile.NamedTemporaryFile(suffix='.xwd') as source:
         subprocess.run(['xwd', '-silent', '-id', hex(xid), '-out', source.name], check=True,
+                       capture_output=True)
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', source.name,
+                        '-frames:v', '1', str(OUT / name)], check=True, capture_output=True)
+
+
+def screenshot_root(name):
+    with tempfile.NamedTemporaryFile(suffix='.xwd') as source:
+        subprocess.run(['xwd', '-silent', '-root', '-out', source.name], check=True,
                        capture_output=True)
         subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', source.name,
                         '-frames:v', '1', str(OUT / name)], check=True, capture_output=True)
@@ -126,25 +134,27 @@ def main():
             keys('Shift_L', 'Super_L', 'v')
             popup = wait_for(lambda: window_id('Linuxxy'))
             assert active_window() == popup, 'global shortcut opened popup without focusing it'
-            screenshot(popup, 'popup.png')
+            screenshot(popup, 'ui_popup.png')
+            screenshot_root('ui_desktop.png')
             keys('Down')
             keys('space')
             preview = wait_for(lambda: window_id('Linuxxy Preview'))
-            screenshot(preview, 'preview.png')
+            screenshot(preview, 'ui_preview.png')
             keys('Escape')
             wait_for(lambda: window_id('Linuxxy Preview') is None)
             activate(popup)
             keys('Control_L', 'comma')
             preferences = wait_for(lambda: window_id('Linuxxy Preferences'))
-            screenshot(preferences, 'general.png')
+            screenshot(preferences, 'ui_general.png')
             keys('Alt_L', 'F4')
             wait_for(lambda: window_id('Linuxxy Preferences') is None)
             activate(target_xid)
             keys('Shift_L', 'Super_L', 'v')
-            wait_for(lambda: window_id('Linuxxy'))
+            popup = wait_for(lambda: window_id('Linuxxy'))
+            wait_for(lambda: active_window() == popup)
             keys('Alt_L', 'Return')
             wait_for(lambda: (temp / 'target-value').read_text() == 'hello linuxxy clipboard')
-            screenshot(target_xid, 'pasted.png')
+            screenshot(target_xid, 'ui_pasted.png')
             print('UI smoke passed; screenshots saved in', OUT)
         finally:
             target.terminate()
