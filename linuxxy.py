@@ -29,6 +29,13 @@ from color_swatch import rgba
 from action_shortcuts import (action_shortcut_from_event, matches_action_shortcut,
                               validate_action_shortcuts)
 
+TRAY_ICONS = {
+    "clipboard": "edit-paste",
+    "scissors": "edit-cut",
+    "paperclip": "mail-attachment-symbolic",
+    "copy": "edit-copy",
+}
+
 
 class App:
     def __init__(self):
@@ -186,9 +193,9 @@ class App:
         self.update_search_visibility()
 
         self.tray = Gtk.StatusIcon.new_from_icon_name("edit-paste")
-        self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
         self.tray.connect("activate", lambda *_: self.toggle_window())
         self.tray.connect("popup-menu", self.tray_menu)
+        self.update_tray()
         self.poll_id = GLib.timeout_add(self.settings.get("check_interval_ms"), self.poll_clipboard)
         self.last_signature = None
         if os.environ.get("XDG_SESSION_TYPE", "x11") == "x11":
@@ -429,6 +436,7 @@ class App:
             self.rows.select_row(self.rows.get_children()[0])
         self.update_multi_selection()
         self.resize_popup(row_count, image_count)
+        self.update_tray()
 
     def resize_popup(self, count, image_count=0):
         # Match the content instead of leaving a large empty window behind.
@@ -641,6 +649,7 @@ class App:
                 self.history.add(row.value)
         if not (row.kind in ("files", "rich") and self.rich_clipboard):
             self.clipboard.store()
+        self.update_tray()
 
     def start_paste_stack(self, *_):
         selected = [row for row in self.rows.get_children()
@@ -662,7 +671,7 @@ class App:
         items = [(row.value, row.kind, row.data) for row in selected]
         self.choose(selected[0], paste=False, cancel_stack=False)
         self.paste_stack = items
-        self.tray.set_tooltip_text(f"Linuxxy ({len(items)} items in paste queue)")
+        self.update_tray()
 
     def advance_paste_stack(self):
         if not self.paste_stack or self.paste_advance_id:
@@ -679,7 +688,7 @@ class App:
         if self.paste_stack:
             value, kind, data = self.paste_stack[0]
             self.copy_entry(SimpleNamespace(value=value, kind=kind, data=data))
-            self.tray.set_tooltip_text(f"Linuxxy ({len(self.paste_stack)} items in paste queue)")
+            self.update_tray()
         else:
             self.cancel_paste_stack()
         return False
@@ -692,7 +701,7 @@ class App:
         if self.paste_keys:
             self.paste_keys.close()
             self.paste_keys = None
-        self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
+        self.update_tray()
 
     def delayed_paste(self):
         self.paste_attempts += 1
@@ -1083,7 +1092,7 @@ class App:
         self.remember_popup_position()
         self.window.hide()
         window = Gtk.Window(title="Linuxxy Preferences")
-        window.set_default_size(460, 550)
+        window.set_default_size(500, 600)
         window.set_border_width(14)
         window.set_transient_for(self.window)
         window.set_keep_above(True)
@@ -1096,7 +1105,13 @@ class App:
         for title in ("General", "Storage", "Appearance", "Advanced"):
             grid = Gtk.Grid(column_spacing=16, row_spacing=14)
             grid.set_border_width(16)
-            notebook.append_page(grid, Gtk.Label(label=title))
+            if title == "Appearance":
+                scroller = Gtk.ScrolledWindow()
+                scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+                scroller.add_with_viewport(grid)
+                notebook.append_page(scroller, Gtk.Label(label=title))
+            else:
+                notebook.append_page(grid, Gtk.Label(label=title))
             grids[title] = grid
 
         def field(grid, row, label, widget):
@@ -1265,6 +1280,25 @@ class App:
         window_size.pack_start(Gtk.Label(label="Height limit"), False, False, 0)
         window_size.pack_start(popup_height, False, False, 0)
         grids["Appearance"].attach(window_size, 0, 12, 2, 1)
+        show_tray = Gtk.CheckButton(label="Show tray icon")
+        show_tray.set_name("linuxxy-show-tray-setting")
+        show_tray.set_active(self.settings.get("show_tray_icon"))
+        tray_icon = Gtk.ComboBoxText()
+        tray_icon.set_name("linuxxy-tray-icon-setting")
+        for key, label in (("clipboard", "Clipboard"), ("scissors", "Scissors"),
+                           ("paperclip", "Paperclip"), ("copy", "Copy")):
+            tray_icon.append(key, label)
+        tray_icon.set_active_id(self.settings.get("tray_icon"))
+        tray_icon.set_sensitive(show_tray.get_active())
+        show_tray.connect("toggled", lambda button: tray_icon.set_sensitive(button.get_active()))
+        tray_controls = Gtk.Box(spacing=8)
+        tray_controls.pack_start(show_tray, False, False, 0)
+        tray_controls.pack_start(tray_icon, False, False, 0)
+        grids["Appearance"].attach(tray_controls, 0, 13, 2, 1)
+        show_recent = Gtk.CheckButton(label="Show recent copy in tray tooltip")
+        show_recent.set_name("linuxxy-tray-recent-setting")
+        show_recent.set_active(self.settings.get("show_recent_copy_in_tray"))
+        grids["Appearance"].attach(show_recent, 0, 14, 2, 1)
         pause_monitoring = Gtk.CheckButton(label="Pause clipboard monitoring")
         pause_monitoring.set_name("linuxxy-pause-monitoring-setting")
         pause_monitoring.set_active(self.settings.get("monitoring_paused"))
@@ -1339,6 +1373,9 @@ class App:
                 ("show_search_field", show_search.get_active()),
                 ("show_application_icons", application_icons.get_active()),
                 ("show_title", show_title.get_active()),
+                ("show_tray_icon", show_tray.get_active()),
+                ("tray_icon", tray_icon.get_active_id()),
+                ("show_recent_copy_in_tray", show_recent.get_active()),
                 ("search_visibility", search_visibility.get_active_id()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("clear_system_clipboard", clear_system_clipboard.get_active()),
@@ -1348,7 +1385,7 @@ class App:
                 self.settings.set(key, value, save=False)
             self.settings.save()
             self.paused = self.settings.get("monitoring_paused")
-            self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
+            self.update_tray()
             self.content_width = self.settings.get("popup_width")
             self.main_column.set_size_request(self.content_width, -1)
             set_autostart(self.settings.get("launch_at_login"))
@@ -1369,7 +1406,26 @@ class App:
     def toggle_pause(self):
         self.paused = not self.paused
         self.settings.set("monitoring_paused", self.paused)
-        self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
+        self.update_tray()
+
+    def update_tray(self):
+        self.tray.set_visible(self.settings.get("show_tray_icon"))
+        icon = TRAY_ICONS[self.settings.get("tray_icon")]
+        if not Gtk.IconTheme.get_default().has_icon(icon):
+            icon = "edit-paste"
+        self.tray.set_from_icon_name(icon)
+        status = "Linuxxy"
+        if self.paused:
+            status += " (paused)"
+        if self.paste_stack:
+            status += f" ({len(self.paste_stack)} items in paste queue)"
+        recent = ""
+        if self.settings.get("show_recent_copy_in_tray"):
+            recent = " ".join(self.history.latest_unpinned_title().split())[:30]
+            if recent:
+                status += f" · {recent}"
+        self.tray.set_title(recent)
+        self.tray.set_tooltip_text(status)
 
     def toggle_preview(self):
         if self.preview is not None:

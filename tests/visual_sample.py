@@ -89,9 +89,19 @@ with tempfile.TemporaryDirectory() as directory:
                     app.quit()
                     raise
                 if number < 3:
-                    page(number + 1)
+                    if number == 2:
+                        appearance_scroll = notebook.get_nth_page(2)
+                        adjustment = appearance_scroll.get_vadjustment()
+                        adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
+                        def bottom():
+                            shot(app.preferences, 'appearance_tray.png')
+                            page(3)
+                            return False
+                        GLib.timeout_add(150, bottom)
+                    else:
+                        page(number + 1)
                 else:
-                    appearance = notebook.get_nth_page(2)
+                    appearance = notebook.get_nth_page(2).get_child().get_child()
                     search_options = next(widget for widget in appearance.get_children()
                                           if isinstance(widget, Gtk.Box) and any(
                                               isinstance(child, Gtk.CheckButton) and

@@ -40,6 +40,9 @@ DEFAULTS = {
     "show_footer": True,
     "show_application_icons": False,
     "show_title": True,
+    "show_tray_icon": True,
+    "tray_icon": "clipboard",
+    "show_recent_copy_in_tray": False,
 }
 
 
@@ -110,6 +113,9 @@ class Settings:
         elif key == "popup_max_height":
             if type(value) is not int or not 180 <= value <= 2000:
                 raise ValueError("Invalid popup height limit")
+        elif key == "tray_icon":
+            if value not in ("clipboard", "scissors", "paperclip", "copy"):
+                raise ValueError("Invalid tray icon")
         elif key in ("history_size", "check_interval_ms", "preview_delay_ms"):
             maximum = 10000 if key == "history_size" else 100000 if key == "preview_delay_ms" else 5000
             minimum = 200 if key == "preview_delay_ms" else 1

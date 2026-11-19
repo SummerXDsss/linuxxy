@@ -115,6 +115,22 @@ class History:
         return sum(candidate.stat().st_size for candidate in
                    (self.path, Path(str(self.path) + "-wal")) if candidate.exists())
 
+    def latest_unpinned_title(self):
+        row = self.db.execute(
+            "SELECT text, kind, alias FROM entries WHERE pinned=0 "
+            "ORDER BY copied_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return ""
+        value, kind, alias = row
+        if alias:
+            return alias
+        if kind == "image":
+            return "Image"
+        if kind == "files":
+            return value.rsplit(" ", 1)[0]
+        return value
+
     def list(self, query: str = "", mode: str = "exact", pins_position: str = "top",
              sort_by: str = "last_copied"):
         rows = self.db.execute(

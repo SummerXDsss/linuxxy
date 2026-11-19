@@ -5,7 +5,7 @@ by [Maccy](https://github.com/p0deje/Maccy).
 
 ## Requirements
 
-- Linux desktop using X11 and a system tray
+- Linux desktop using X11; a system tray is recommended
 - Python 3
 - GTK 3 and PyGObject (`python3-gi` on Debian/Ubuntu)
 - python-xlib (`python3-xlib` on Debian/Ubuntu)
@@ -34,8 +34,10 @@ preferences are kept.
 python3 linuxxy.py
 ```
 
-The process stays in the tray. A second instance exits rather than opening a
-second clipboard watcher. Use the tray menu to pause monitoring or quit.
+The process stays in the tray when the tray icon is enabled. A second instance
+exits rather than opening a second clipboard watcher. Use the tray menu to pause
+monitoring or quit. If the icon is hidden, the global shortcut still opens the
+popup and Preferences remain available there.
 
 ## Use
 
@@ -94,6 +96,9 @@ icons, popup width and height limit, clear-on-quit behavior, optional system
 clipboard clearing when history is cleared, pause monitoring, and launch
 at login. When the search field is hidden, typing still filters the history;
 Backspace removes the last character.
+The tray icon can be hidden or changed to a clipboard, scissors, paperclip, or
+copy symbol. An option puts the latest unpinned item in its tooltip and status
+title; whether a tray host shows title text next to the icon depends on the desktop.
 Storage shows the current history database size. Clearing history on quit keeps
 pinned items; the separate clear-all shortcut removes them.
 Drag the popup's title to move it; the last-position option reopens it there.
@@ -158,6 +163,8 @@ Appearance settings, reopens a long history, and captures the resized popup.
 The [Advanced settings test](tests/advanced_settings_smoke.py) changes the real
 settings controls, checks paused monitoring and clipboard clearing, and verifies
 that pinned items survive clear-on-quit.
+The [tray settings test](tests/tray_settings_smoke.py) changes tray visibility and
+icon style, checks the recent-copy text, and opens the popup with the icon hidden.
 The [shortcut behavior test](tests/action_shortcuts_behavior.py) checks validation,
 conflicts, disabled keys, and persistence.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy
