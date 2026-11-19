@@ -30,6 +30,7 @@ DEFAULTS = {
     "save_files": True,
     "show_footer": True,
     "show_application_icons": False,
+    "show_title": True,
 }
 
 

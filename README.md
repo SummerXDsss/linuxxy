@@ -77,7 +77,8 @@ search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
 underline, or color), pinned item position, popup position, automatic preview
 and its delay, image thumbnail height, hex color swatches, visible whitespace
 symbols, search field visibility (always, while typing, or hidden), footer
-visibility, optional source application icons, clear-on-quit behavior, and launch
+visibility, an optional title before the search field, optional source application
+icons, clear-on-quit behavior, and launch
 at login. When the search field is hidden, typing still filters the history;
 Backspace removes the last character.
 Preferences are saved in

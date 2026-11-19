@@ -63,13 +63,20 @@ class App:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         box.set_border_width(7)
         self.window.add(box)
+        self.search_line = Gtk.Box(spacing=5)
+        self.search_line.set_no_show_all(True)
+        box.pack_start(self.search_line, False, False, 3)
+        self.title_label = Gtk.Label(label="Linuxxy")
+        self.title_label.set_name("linuxxy-title")
+        self.title_label.set_no_show_all(True)
+        self.search_line.pack_start(self.title_label, False, False, 5)
         self.search = Gtk.SearchEntry()
         self.search.set_name("linuxxy-search")
         self.search.set_no_show_all(True)
         self.search.set_placeholder_text("Search clipboard history")
         self.search.connect("changed", self.search_changed)
         self.search.connect("key-press-event", self.search_key)
-        box.pack_start(self.search, False, False, 3)
+        self.search_line.pack_start(self.search, True, True, 0)
         self.search_separator = Gtk.Separator()
         self.search_separator.set_no_show_all(True)
         box.pack_start(self.search_separator, False, False, 4)
@@ -129,6 +136,7 @@ class App:
         provider.load_from_data(b"""
             #linuxxy-popup { background: #28292d; border: 1px solid #4a4b50; border-radius: 9px; }
             #linuxxy-search { min-height: 30px; margin: 2px 2px 4px 2px; }
+            #linuxxy-title { color: #b8b9bd; font-size: 12px; }
             #linuxxy-list, #linuxxy-list > row { background: transparent; }
             #linuxxy-list > row { min-height: 31px; border-radius: 5px; }
             #linuxxy-list > row label { color: #eeeeee; }
@@ -156,7 +164,10 @@ class App:
         )
         was_focused = self.search.is_focus()
         self.search.set_visible(visible)
-        self.search_separator.set_visible(visible)
+        self.title_label.set_visible(self.settings.get("show_title"))
+        header_visible = visible or self.settings.get("show_title")
+        self.search_line.set_visible(header_visible)
+        self.search_separator.set_visible(header_visible)
         if not visible and was_focused and self.window.get_visible():
             row = self.selected()
             if row:
@@ -341,8 +352,10 @@ class App:
         visible = min(count, 9)
         image_extra = max(0, self.settings.get("image_max_height") - 30)
         height = 105 + max(34, visible * 40 + min(image_count, visible) * image_extra)
-        if not self.search.get_visible():
+        if not self.search_line.get_visible():
             height -= 43
+        elif not self.search.get_visible():
+            height -= 14
         if not self.settings.get("show_footer"):
             height -= 26
         self.window.resize(440, min(height, 470))
@@ -955,6 +968,9 @@ class App:
         application_icons = Gtk.CheckButton(label="Show source application icons")
         application_icons.set_active(self.settings.get("show_application_icons"))
         grids["Appearance"].attach(application_icons, 0, 10, 2, 1)
+        show_title = Gtk.CheckButton(label="Show title before search field")
+        show_title.set_active(self.settings.get("show_title"))
+        grids["Appearance"].attach(show_title, 0, 11, 2, 1)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -1008,6 +1024,7 @@ class App:
                 ("show_special_symbols", special_symbols.get_active()),
                 ("show_search_field", show_search.get_active()),
                 ("show_application_icons", application_icons.get_active()),
+                ("show_title", show_title.get_active()),
                 ("search_visibility", search_visibility.get_active_id()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),

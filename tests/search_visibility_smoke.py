@@ -33,6 +33,8 @@ def main():
         if original_image or original_text is not None:
             clipboard.store()
     atexit.register(restore)
+    clipboard.set_text('', -1)
+    clipboard.store()
 
     with tempfile.TemporaryDirectory() as directory:
         temp = Path(directory)
