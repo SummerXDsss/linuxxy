@@ -73,7 +73,9 @@ subsequent **Ctrl+V** pastes the current item and prepares the next one.
 You can also add entries to the queue from the right-click menu. Choosing
 another item or copying new content cancels the queue.
 Use **Ctrl+Alt+Delete** to clear unpinned history or **Ctrl+Alt+Shift+Delete**
-to clear all history, including pinned entries. Clear unpinned history from the footer.
+to clear all history, including pinned entries. The popup footer has menu-style
+rows for Clear, Preferences, About, and Quit; **Ctrl+Q** also quits. Clearing
+history asks for confirmation unless you choose **Don't ask again** in the dialog.
 Press **Ctrl+Space** or click the sidebar button beside search to open or close
 a selected result's full text or image
 preview beside the list. The preview follows the selected item and opens on the
@@ -165,6 +167,9 @@ settings controls, checks paused monitoring and clipboard clearing, and verifies
 that pinned items survive clear-on-quit.
 The [tray settings test](tests/tray_settings_smoke.py) changes tray visibility and
 icon style, checks the recent-copy text, and opens the popup with the icon hidden.
+The [footer menu test](tests/footer_menu_smoke.py) clicks the menu rows with real
+X11 pointer events, captures About and both clear confirmations, and checks the
+quit shortcut.
 The [shortcut behavior test](tests/action_shortcuts_behavior.py) checks validation,
 conflicts, disabled keys, and persistence.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy

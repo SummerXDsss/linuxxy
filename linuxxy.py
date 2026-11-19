@@ -133,26 +133,36 @@ class App:
         self.rows.connect("key-press-event", self.on_key)
         scroll.add(self.rows)
         box.pack_start(Gtk.Separator(), False, False, 4)
-        footer = Gtk.Box(spacing=6)
+        footer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         footer.set_name("linuxxy-footer")
         footer.set_no_show_all(not self.settings.get("show_footer"))
         self.footer = footer
         box.pack_start(footer, False, False, 0)
-        for label, callback in (("Clear", self.clear), ("Preferences", self.show_settings),
-                                ("Quit", self.quit)):
-            button = Gtk.Button(label=label)
+
+        def footer_button(label, shortcut, callback):
+            button = Gtk.Button()
             button.set_relief(Gtk.ReliefStyle.NONE)
             button.connect("clicked", callback)
+            line = Gtk.Box(spacing=8)
+            title = Gtk.Label(label=label, xalign=0)
+            line.pack_start(title, True, True, 0)
+            badge = Gtk.Label(label=shortcut, xalign=1)
+            badge.set_name("linuxxy-footer-shortcut")
+            line.pack_end(badge, False, False, 0)
+            button.add(line)
             footer.pack_start(button, False, False, 0)
+            return button
+
         self.queue_button = Gtk.Button(label="Queue")
         self.queue_button.set_relief(Gtk.ReliefStyle.NONE)
         self.queue_button.set_no_show_all(True)
         self.queue_button.set_tooltip_text("Copy selected items in order, then press Ctrl+V for each")
         self.queue_button.connect("clicked", self.start_paste_stack)
         footer.pack_start(self.queue_button, False, False, 0)
-        hint = Gtk.Label(label="↵ Copy  ·  Alt+↵ Paste")
-        hint.set_xalign(1)
-        footer.pack_end(hint, False, False, 4)
+        self.clear_button = footer_button("Clear", "Ctrl+Alt+Delete", self.confirm_clear)
+        self.preferences_button = footer_button("Preferences…", "Ctrl+,", self.show_settings)
+        self.about_button = footer_button("About Linuxxy", "", self.show_about)
+        self.quit_button = footer_button("Quit", "Ctrl+Q", self.quit)
         self.preview_divider = Gtk.EventBox()
         self.preview_divider.set_name("linuxxy-preview-divider")
         self.preview_divider.set_no_show_all(True)
@@ -221,8 +231,9 @@ class App:
             #linuxxy-list > row { min-height: 31px; border-radius: 5px; }
             #linuxxy-list > row label { color: #eeeeee; }
             box.linuxxy-selected { background-color: #466ca8; border-radius: 5px; color: white; }
-            #linuxxy-footer button { min-height: 20px; padding: 0 6px; font-size: 11px; }
-            #linuxxy-footer label { color: #aaa; font-size: 11px; }
+            #linuxxy-footer button { min-height: 24px; padding: 1px 9px; font-size: 12px; color: #eee; }
+            #linuxxy-footer button:hover { background: #3b3d43; border-radius: 5px; }
+            #linuxxy-footer-shortcut { color: #a7a8ad; font-size: 10px; }
             #linuxxy-index { color: #aaa; font-size: 10px; min-width: 16px; }
             box.linuxxy-multi-selected { background-color: #4d624b; border-radius: 5px; color: white; }
             #linuxxy-color-swatch { border: 1px solid #888; border-radius: 2px; }
@@ -447,7 +458,9 @@ class App:
             height -= 43
         elif not self.search.get_visible():
             height -= 14
-        if not self.settings.get("show_footer"):
+        if self.settings.get("show_footer"):
+            height += 89
+        else:
             height -= 26
         display = Gdk.Display.get_default()
         _screen, pointer_x, pointer_y, _mods = display.get_pointer()
@@ -840,7 +853,49 @@ class App:
     def clear(self, *_):
         self.history.clear()
         self.clear_system_clipboard_if_enabled()
+        self.cancel_paste_stack()
         self.refresh()
+        self.hide_window()
+
+    def confirm_clear(self, *_args, all_items=False):
+        if self.settings.get("suppress_clear_confirmation"):
+            if all_items:
+                self.clear_all()
+            else:
+                self.clear()
+            return
+        dialog = Gtk.MessageDialog(transient_for=self.window, modal=True,
+                                   message_type=Gtk.MessageType.WARNING,
+                                   buttons=Gtk.ButtonsType.NONE,
+                                   text=("Clear all clipboard history, including pinned items?"
+                                         if all_items else "Clear unpinned clipboard history?"))
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        confirm = dialog.add_button("Clear all" if all_items else "Clear", Gtk.ResponseType.OK)
+        confirm.get_style_context().add_class("destructive-action")
+        remember = Gtk.CheckButton(label="Don't ask again")
+        dialog.get_message_area().pack_start(remember, False, False, 4)
+
+        def respond(window, response):
+            suppress = remember.get_active()
+            window.destroy()
+            if response != Gtk.ResponseType.OK:
+                return
+            if suppress:
+                self.settings.set("suppress_clear_confirmation", True)
+            if all_items:
+                self.clear_all()
+            else:
+                self.clear()
+
+        dialog.connect("response", respond)
+        dialog.show_all()
+
+    def clear_all(self):
+        self.history.clear_all()
+        self.clear_system_clipboard_if_enabled()
+        self.cancel_paste_stack()
+        self.refresh()
+        self.hide_window()
 
     def clear_system_clipboard_if_enabled(self):
         if self.settings.get("clear_system_clipboard"):
@@ -910,16 +965,14 @@ class App:
         if event.keyval == Gdk.KEY_comma and ctrl:
             self.show_settings()
             return True
+        if event.keyval == Gdk.KEY_q and ctrl:
+            self.quit()
+            return True
         if event.keyval == Gdk.KEY_Escape:
             self.hide_window()
             return True
         if event.keyval == Gdk.KEY_Delete and ctrl and alt:
-            if shift:
-                self.history.clear_all()
-            else:
-                self.history.clear()
-            self.clear_system_clipboard_if_enabled()
-            self.refresh()
+            self.confirm_clear(all_items=shift)
             return True
         if event.keyval == Gdk.KEY_Return:
             row = self.selected() or next(iter(self.rows.get_children()), None)
@@ -1076,12 +1129,28 @@ class App:
                                 ("Cancel paste queue", self.cancel_paste_stack),
                                 ("Preferences…", self.show_settings),
                                 ("Resume monitoring" if self.paused else "Pause monitoring", self.toggle_pause),
+                                ("About Linuxxy", self.show_about),
                                 ("Quit", self.quit)):
             item = Gtk.MenuItem(label=label)
             item.connect("activate", lambda _item, fn=callback: fn())
             menu.append(item)
         menu.show_all()
         menu.popup(None, None, Gtk.StatusIcon.position_menu, self.tray, button, activate_time)
+
+    def show_about(self, *_):
+        if getattr(self, "about", None) and self.about.get_visible():
+            self.about.present()
+            return
+        dialog = Gtk.AboutDialog(transient_for=self.window)
+        dialog.set_program_name("Linuxxy")
+        dialog.set_comments("An X11 clipboard manager inspired by Maccy")
+        dialog.set_website("https://github.com/SummerXDsss/linuxxy")
+        dialog.set_license_type(Gtk.License.MIT_X11)
+        dialog.connect("response", lambda window, *_: window.destroy())
+        dialog.connect("destroy", lambda *_: setattr(self, "about", None))
+        self.about = dialog
+        dialog.show_all()
+        dialog.present()
 
     def show_settings(self, *_):
         if getattr(self, "preferences", None) and self.preferences.get_visible():

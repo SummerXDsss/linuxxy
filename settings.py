@@ -16,6 +16,7 @@ DEFAULTS = {
     "check_interval_ms": 500,
     "clear_on_quit": False,
     "clear_system_clipboard": False,
+    "suppress_clear_confirmation": False,
     "monitoring_paused": False,
     "popup_position": "cursor",
     "popup_last_position": None,
