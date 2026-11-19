@@ -95,8 +95,8 @@ search mode (exact, fuzzy, regex, or mixed), match highlighting (bold, italic,
 underline, or color), pinned item position, popup position (pointer, tray icon,
 active window, screen center, or last position), a screen choice for center and
 last-position mode on multi-monitor desktops, a reset for the saved position,
-automatic preview
-and its delay, image thumbnail height, hex color swatches, visible whitespace
+popup theme (follow system, light, or dark), automatic preview and its delay,
+image thumbnail height, hex color swatches, visible whitespace
 symbols, search field visibility (always, while typing, or hidden), footer
 visibility, an optional title before the search field, optional source application
 icons, popup width and height limit, clear-on-quit behavior, optional system
@@ -160,6 +160,9 @@ position falls back to the pointer.
 The [screen settings test](tests/screen_settings_smoke.py) exercises the screen
 picker and last-position reset in the real GTK settings window, using two
 simulated monitor work areas to check placement and persistence.
+The [theme test](tests/theme_smoke.py) switches the popup among system, light,
+and dark modes in the real settings UI, measures the rendered background, and
+checks a live system theme change.
 The [shortcut cycle test](tests/shortcut_cycle_smoke.py) exercises held modifiers,
 repeated opening-key presses, and selection on release with real X11 events.
 The [action shortcut test](tests/action_shortcuts_smoke.py) records new pin,

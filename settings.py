@@ -20,6 +20,7 @@ DEFAULTS = {
     "monitoring_paused": False,
     "popup_position": "cursor",
     "popup_screen": 0,
+    "popup_theme": "system",
     "popup_last_position": None,
     "launch_at_login": False,
     "search_mode": "exact",
@@ -103,6 +104,9 @@ class Settings:
         elif key == "popup_screen":
             if type(value) is not int or not 0 <= value <= 32:
                 raise ValueError("Invalid popup screen")
+        elif key == "popup_theme":
+            if value not in ("system", "light", "dark"):
+                raise ValueError("Invalid popup theme")
         elif key == "popup_last_position":
             if value is not None and (type(value) is not list or len(value) != 2 or
                                       any(type(coordinate) is not int for coordinate in value)):

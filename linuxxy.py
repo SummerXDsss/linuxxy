@@ -103,6 +103,9 @@ class App:
         self.window.connect("delete-event", self.hide_window)
         self.window.connect("key-press-event", self.on_key)
         self.install_style()
+        gtk_settings = Gtk.Settings.get_default()
+        gtk_settings.connect("notify::gtk-theme-name", self.system_theme_changed)
+        gtk_settings.connect("notify::gtk-application-prefer-dark-theme", self.system_theme_changed)
         self.popup_layout = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         self.window.add(self.popup_layout)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -258,35 +261,65 @@ class App:
         return rows
 
     def install_style(self):
-        provider = Gtk.CssProvider()
-        provider.load_from_data(b"""
-            #linuxxy-popup { background: #28292d; border: 1px solid #4a4b50; border-radius: 9px; }
+        theme = self.settings.get("popup_theme")
+        if theme == "system":
+            gtk_settings = Gtk.Settings.get_default()
+            name = (gtk_settings.get_property("gtk-theme-name") or "").lower()
+            dark = gtk_settings.get_property("gtk-application-prefer-dark-theme")
+            theme = "dark" if dark or "dark" in name else "light"
+        colors = ({
+            "popup": "#28292d", "border": "#4a4b50", "muted": "#b8b9bd",
+            "text": "#eeeeee", "selected": "#466ca8", "hover": "#3b3d43",
+            "shortcut": "#a7a8ad", "index": "#aaaaaa", "multi": "#4d624b",
+            "multi_text": "#ffffff", "preview": "#222327", "divider": "#34353a",
+            "preview_muted": "#cccccc", "metadata": "#b6b6ba",
+        } if theme == "dark" else {
+            "popup": "#f3f4f6", "border": "#c6c8cd", "muted": "#64676f",
+            "text": "#25272d", "selected": "#4c78b9", "hover": "#e2e5e9",
+            "shortcut": "#737780", "index": "#747780", "multi": "#d3e8d4",
+            "multi_text": "#244a2b", "preview": "#eceef1", "divider": "#d3d5da",
+            "preview_muted": "#555963", "metadata": "#646870",
+        })
+        css = """
+            #linuxxy-popup { background: @popup@; border: 1px solid @border@; border-radius: 9px; }
+            #linuxxy-popup separator { background: @border@; }
             #linuxxy-search { min-height: 30px; margin: 2px 2px 4px 2px; }
-            #linuxxy-preview-toggle { min-width: 24px; padding: 0 2px; color: #b8b9bd; }
-            #linuxxy-title { color: #b8b9bd; font-size: 12px; }
+            #linuxxy-preview-toggle { min-width: 24px; padding: 0 2px; color: @muted@; }
+            #linuxxy-title { color: @muted@; font-size: 12px; }
             #linuxxy-list, #linuxxy-list > row { background: transparent; }
             #linuxxy-list > row { min-height: 31px; border-radius: 5px; }
-            #linuxxy-list > row label { color: #eeeeee; }
-            box.linuxxy-selected { background-color: #466ca8; border-radius: 5px; color: white; }
-            #linuxxy-footer button { min-height: 24px; padding: 1px 9px; font-size: 12px; color: #eee; }
-            #linuxxy-footer button:hover { background: #3b3d43; border-radius: 5px; }
-            #linuxxy-footer-shortcut { color: #a7a8ad; font-size: 10px; }
-            #linuxxy-index { color: #aaa; font-size: 10px; min-width: 16px; }
-            box.linuxxy-multi-selected { background-color: #4d624b; border-radius: 5px; color: white; }
+            #linuxxy-list > row label { color: @text@; }
+            box.linuxxy-selected { background-color: @selected@; border-radius: 5px; }
+            #linuxxy-list > row box.linuxxy-selected label { color: white; }
+            #linuxxy-footer button { min-height: 24px; padding: 1px 9px; font-size: 12px; color: @text@; }
+            #linuxxy-footer button:hover { background: @hover@; border-radius: 5px; }
+            #linuxxy-footer-shortcut { color: @shortcut@; font-size: 10px; }
+            #linuxxy-index { color: @index@; font-size: 10px; min-width: 16px; }
+            box.linuxxy-multi-selected { background-color: @multi@; border-radius: 5px; }
+            #linuxxy-list > row box.linuxxy-multi-selected label { color: @multi_text@; }
             #linuxxy-color-swatch { border: 1px solid #888; border-radius: 2px; }
-            #linuxxy-preview { background: #222327; border-left: 1px solid #4a4b50; }
-            #linuxxy-preview.left { border-left: none; border-right: 1px solid #4a4b50; }
-            #linuxxy-preview-divider { background: #34353a; }
-            #linuxxy-preview-heading { color: #cccccc; font-size: 11px; }
-            #linuxxy-preview button { color: #cccccc; }
-            #linuxxy-preview-metadata { color: #b6b6ba; font-size: 11px; }
+            #linuxxy-preview { background: @preview@; border-left: 1px solid @border@; }
+            #linuxxy-preview.left { border-left: none; border-right: 1px solid @border@; }
+            #linuxxy-preview-divider { background: @divider@; }
+            #linuxxy-preview-heading { color: @preview_muted@; font-size: 11px; }
+            #linuxxy-preview button { color: @preview_muted@; }
+            #linuxxy-preview-metadata { color: @metadata@; font-size: 11px; }
             #linuxxy-preview textview, #linuxxy-preview textview text {
-                background: #222327; color: #eeeeee;
+                background: @preview@; color: @text@;
             }
-        """)
-        Gtk.StyleContext.add_provider_for_screen(
-            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
+        """
+        for key, value in colors.items():
+            css = css.replace(f"@{key}@", value)
+        if not hasattr(self, "style_provider"):
+            self.style_provider = Gtk.CssProvider()
+            Gtk.StyleContext.add_provider_for_screen(
+                Gdk.Screen.get_default(), self.style_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.style_provider.load_from_data(css.encode())
+
+    def system_theme_changed(self, *_):
+        if self.settings.get("popup_theme") == "system":
+            self.install_style()
 
     def on_clipboard_change(self, *_):
         GLib.idle_add(self.capture, time.monotonic() > self.ignore_own_change_until)
@@ -1435,14 +1468,21 @@ class App:
         sort_by.set_active_id(self.settings.get("sort_by"))
         field(grids["Storage"], 5, "Sort by", sort_by)
 
+        popup_theme = Gtk.ComboBoxText()
+        popup_theme.set_name("linuxxy-popup-theme-setting")
+        for key, label in (("system", "Follow system"), ("light", "Light"),
+                           ("dark", "Dark")):
+            popup_theme.append(key, label)
+        popup_theme.set_active_id(self.settings.get("popup_theme"))
+        field(grids["Appearance"], 0, "Popup theme", popup_theme)
         pins_position = Gtk.ComboBoxText()
         pins_position.append("top", "Top")
         pins_position.append("bottom", "Bottom")
         pins_position.set_active_id(self.settings.get("pins_position"))
-        field(grids["Appearance"], 0, "Pinned items", pins_position)
+        field(grids["Appearance"], 1, "Pinned items", pins_position)
         image_height = Gtk.SpinButton.new_with_range(1, 200, 1)
         image_height.set_value(self.settings.get("image_max_height"))
-        field(grids["Appearance"], 1, "Image thumbnail height", image_height)
+        field(grids["Appearance"], 2, "Image thumbnail height", image_height)
         position = Gtk.ComboBoxText()
         for key, label in (("cursor", "Near pointer"), ("status_icon", "At tray icon"),
                            ("active_window", "Center of active window"),
@@ -1495,30 +1535,30 @@ class App:
 
         position.connect("changed", update_position_controls)
         update_position_controls()
-        field(grids["Appearance"], 2, "Open popup", position_controls)
+        field(grids["Appearance"], 3, "Open popup", position_controls)
         show_footer = Gtk.CheckButton(label="Show footer")
         show_footer.set_active(self.settings.get("show_footer"))
-        grids["Appearance"].attach(show_footer, 0, 3, 2, 1)
+        grids["Appearance"].attach(show_footer, 0, 4, 2, 1)
         auto_preview = Gtk.CheckButton(label="Open preview automatically")
         auto_preview.set_active(self.settings.get("open_preview_automatically"))
-        grids["Appearance"].attach(auto_preview, 0, 4, 2, 1)
+        grids["Appearance"].attach(auto_preview, 0, 5, 2, 1)
         preview_delay = Gtk.SpinButton.new_with_range(200, 100000, 100)
         preview_delay.set_value(self.settings.get("preview_delay_ms"))
         preview_delay.set_sensitive(auto_preview.get_active())
         auto_preview.connect("toggled", lambda button: preview_delay.set_sensitive(button.get_active()))
-        field(grids["Appearance"], 5, "Preview delay (ms)", preview_delay)
+        field(grids["Appearance"], 6, "Preview delay (ms)", preview_delay)
         highlight_match = Gtk.ComboBoxText()
         for key, name in (("bold", "Bold"), ("italic", "Italic"),
                           ("underline", "Underline"), ("color", "Color")):
             highlight_match.append(key, name)
         highlight_match.set_active_id(self.settings.get("highlight_match"))
-        field(grids["Appearance"], 6, "Highlight matches", highlight_match)
+        field(grids["Appearance"], 7, "Highlight matches", highlight_match)
         color_swatch = Gtk.CheckButton(label="Show color swatches for hex colors")
         color_swatch.set_active(self.settings.get("show_hex_color_swatch"))
-        grids["Appearance"].attach(color_swatch, 0, 7, 2, 1)
+        grids["Appearance"].attach(color_swatch, 0, 8, 2, 1)
         special_symbols = Gtk.CheckButton(label="Show spaces, tabs, and line breaks")
         special_symbols.set_active(self.settings.get("show_special_symbols"))
-        grids["Appearance"].attach(special_symbols, 0, 8, 2, 1)
+        grids["Appearance"].attach(special_symbols, 0, 9, 2, 1)
         search_display = Gtk.Box(spacing=8)
         show_search = Gtk.CheckButton(label="Show search field")
         show_search.set_active(self.settings.get("show_search_field"))
@@ -1530,13 +1570,13 @@ class App:
         search_visibility.set_sensitive(show_search.get_active())
         show_search.connect("toggled", lambda button: search_visibility.set_sensitive(button.get_active()))
         search_display.pack_start(search_visibility, False, False, 0)
-        grids["Appearance"].attach(search_display, 0, 9, 2, 1)
+        grids["Appearance"].attach(search_display, 0, 10, 2, 1)
         application_icons = Gtk.CheckButton(label="Show source application icons")
         application_icons.set_active(self.settings.get("show_application_icons"))
-        grids["Appearance"].attach(application_icons, 0, 10, 2, 1)
+        grids["Appearance"].attach(application_icons, 0, 11, 2, 1)
         show_title = Gtk.CheckButton(label="Show title before search field")
         show_title.set_active(self.settings.get("show_title"))
-        grids["Appearance"].attach(show_title, 0, 11, 2, 1)
+        grids["Appearance"].attach(show_title, 0, 12, 2, 1)
         popup_width = Gtk.SpinButton.new_with_range(320, 1000, 10)
         popup_width.set_name("linuxxy-popup-width-setting")
         popup_width.set_value(self.settings.get("popup_width"))
@@ -1548,7 +1588,7 @@ class App:
         window_size.pack_start(popup_width, False, False, 0)
         window_size.pack_start(Gtk.Label(label="Height limit"), False, False, 0)
         window_size.pack_start(popup_height, False, False, 0)
-        grids["Appearance"].attach(window_size, 0, 12, 2, 1)
+        grids["Appearance"].attach(window_size, 0, 13, 2, 1)
         show_tray = Gtk.CheckButton(label="Show tray icon")
         show_tray.set_name("linuxxy-show-tray-setting")
         show_tray.set_active(self.settings.get("show_tray_icon"))
@@ -1563,11 +1603,11 @@ class App:
         tray_controls = Gtk.Box(spacing=8)
         tray_controls.pack_start(show_tray, False, False, 0)
         tray_controls.pack_start(tray_icon, False, False, 0)
-        grids["Appearance"].attach(tray_controls, 0, 13, 2, 1)
+        grids["Appearance"].attach(tray_controls, 0, 14, 2, 1)
         show_recent = Gtk.CheckButton(label="Show recent copy in tray tooltip")
         show_recent.set_name("linuxxy-tray-recent-setting")
         show_recent.set_active(self.settings.get("show_recent_copy_in_tray"))
-        grids["Appearance"].attach(show_recent, 0, 14, 2, 1)
+        grids["Appearance"].attach(show_recent, 0, 15, 2, 1)
         pause_monitoring = Gtk.CheckButton(label="Pause clipboard monitoring")
         pause_monitoring.set_name("linuxxy-pause-monitoring-setting")
         pause_monitoring.set_active(self.settings.get("monitoring_paused"))
@@ -1631,6 +1671,7 @@ class App:
                 ("pins_position", pins_position.get_active_id()),
                 ("popup_position", position.get_active_id()),
                 ("popup_screen", int(screen_choice.get_active_id())),
+                ("popup_theme", popup_theme.get_active_id()),
                 ("popup_width", popup_width.get_value_as_int()),
                 ("popup_max_height", popup_height.get_value_as_int()),
                 ("show_footer", show_footer.get_active()),
@@ -1656,6 +1697,7 @@ class App:
             if reset_last_position[0]:
                 self.settings.set("popup_last_position", None, save=False)
             self.settings.save()
+            self.install_style()
             self.paused = self.settings.get("monitoring_paused")
             self.update_tray()
             self.content_width = self.settings.get("popup_width")
