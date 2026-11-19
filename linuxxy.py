@@ -5,6 +5,7 @@ import os
 import signal
 import fcntl
 import hashlib
+import time
 from pathlib import Path
 
 import gi
@@ -34,6 +35,7 @@ class App:
         self.x11 = None
         self.rich_clipboard = None
         self.return_window = None
+        self.ignore_own_change_until = 0
 
         self.window = Gtk.Window(title="Linuxxy")
         self.window.set_default_size(440, 120)
@@ -116,7 +118,7 @@ class App:
         )
 
     def on_clipboard_change(self, *_):
-        GLib.idle_add(self.capture, True)
+        GLib.idle_add(self.capture, time.monotonic() > self.ignore_own_change_until)
 
     def poll_clipboard(self):
         self.capture()
@@ -244,7 +246,9 @@ class App:
 
     def row_click(self, row, event):
         if event.button == 1:
-            self.choose(row, paste=True if event.state & Gdk.ModifierType.MOD1_MASK else None)
+            alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
+            shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
+            self.choose(row, paste=True if alt else None, plain=alt and shift)
             return True
         if event.button != 3:
             return False
@@ -271,10 +275,15 @@ class App:
         if selected:
             selected.content.get_style_context().add_class("linuxxy-selected")
 
-    def choose(self, row, paste=None):
+    def choose(self, row, paste=None, plain=False):
         if paste is None:
             paste = self.settings.get("paste_by_default")
-        if row.kind == "files" and self.rich_clipboard:
+        if plain and row.kind == "rich":
+            self.ignore_own_change_until = time.monotonic() + 0.5
+            self.clipboard.set_text(row.value, -1)
+            self.last_signature = ("text", row.value)
+            self.history.add_rich(row.value, row.data)
+        elif row.kind == "files" and self.rich_clipboard:
             uris = row.data.decode("utf-8").splitlines()
             self.rich_clipboard.set({
                 "text/uri-list": row.data,
@@ -380,7 +389,9 @@ class App:
         if event.keyval == Gdk.KEY_Return:
             row = self.selected() or next(iter(self.rows.get_children()), None)
             if row:
-                if alt or ctrl:
+                if alt and shift:
+                    self.choose(row, paste=True, plain=True)
+                elif alt or ctrl:
                     self.choose(row, paste=not self.settings.get("paste_by_default"))
                 else:
                     self.choose(row)

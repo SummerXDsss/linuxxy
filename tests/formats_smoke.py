@@ -86,6 +86,13 @@ def check(kind, formats, expected_data, query_code):
             app.choose(row, paste=False)
             assert query(query_code) == ('<b>Rich test</b>' if kind == 'rich' else
                                          "['file:///tmp/linuxxy-one.txt', 'file:///tmp/linuxxy-two.txt']")
+            if kind == 'rich':
+                app.choose(row, paste=False, plain=True)
+                plain = query("import gi;gi.require_version('Gtk','3.0');"
+                              "gi.require_version('Gdk','3.0');from gi.repository import Gtk,Gdk;"
+                              "c=Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD);print(c.wait_for_text())")
+                assert plain == 'Rich test', plain
+                assert app.history.list(title)[0][3] == 'rich'
         finally:
             app.close()
 

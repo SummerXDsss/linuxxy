@@ -33,6 +33,7 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
 3. Type to search. Press **Down** to focus results, then use arrow keys.
 4. Press **Enter** or click a result to copy it. Press **Alt+Enter** or
    **Alt+click** to paste it into the previous window. **Escape** hides the window.
+   Use **Alt+Shift+Enter** or **Alt+Shift+click** to paste text without formatting.
 
 Use **Ctrl+1…9** to copy a visible result or **Alt+1…9** to paste it.
 Click a row to choose it,
