@@ -28,6 +28,8 @@ with tempfile.TemporaryDirectory() as directory:
     ok, png = image.save_to_bufferv('png', [], [])
     assert ok
     history.add_image(png)
+    history.add('#4e9aab')
+    history.add('  linuxxy-sample\nnext\tline  ')
     history.close()
 
     from settings import Settings

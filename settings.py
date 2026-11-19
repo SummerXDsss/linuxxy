@@ -20,6 +20,8 @@ DEFAULTS = {
     "preview_delay_ms": 1500,
     "highlight_match": "bold",
     "image_max_height": 40,
+    "show_hex_color_swatch": True,
+    "show_special_symbols": True,
     "pins_position": "top",
     "save_text": True,
     "save_images": True,

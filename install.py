@@ -10,7 +10,8 @@ from pathlib import Path
 
 
 PROGRAM_FILES = ("linuxxy.py", "history.py", "settings.py", "autostart.py", "install.py",
-                 "x11.py", "x11_clipboard.py", "paste_keys.py", "search.py", "README.md", "LICENSE",
+                 "x11.py", "x11_clipboard.py", "paste_keys.py", "color_swatch.py",
+                 "search.py", "README.md", "LICENSE",
                  "LICENSE-Maccy")
 
 

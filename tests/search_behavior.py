@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from history import History
-from search import match, snippet
+from search import match, snippet, visible_title
 
 
 with tempfile.TemporaryDirectory() as directory:
@@ -32,5 +32,12 @@ assert match('hello', '[', 'regex') is None
 long_text = 'a' * 180 + '<match>&'
 visible, ranges = snippet(long_text, [(180, 187)])
 assert '<match>' in visible and visible[ranges[0][0]:ranges[0][1]] == '<match>'
+title = '  first\nnext\tlast  '
+shown = visible_title(title)
+assert shown == '··first⏎next⇥last··'
+assert len(shown) == len(title)
+visible, ranges = snippet(shown, [(8, 12)])
+assert visible[ranges[0][0]:ranges[0][1]] == 'next'
+assert visible_title(title, False) == title
 
 print('Search ranking, modes, and snippets passed')

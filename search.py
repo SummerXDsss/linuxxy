@@ -78,3 +78,19 @@ def snippet(text, ranges, limit=160):
     shown = [(max(left, start) + offset, min(right, end) + offset)
              for left, right in ranges if right > start and left < end]
     return visible, shown
+
+
+def visible_title(text, show_special_symbols=True):
+    """Display whitespace without shifting character indexes used by search."""
+    if not show_special_symbols:
+        return text
+    characters = list(text)
+    for index, character in enumerate(characters):
+        if character != ' ':
+            break
+        characters[index] = '·'
+    for index in range(len(characters) - 1, -1, -1):
+        if characters[index] != ' ':
+            break
+        characters[index] = '·'
+    return ''.join(characters).replace('\n', '⏎').replace('\t', '⇥')

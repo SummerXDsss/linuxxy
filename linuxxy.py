@@ -22,8 +22,9 @@ from autostart import set_enabled as set_autostart
 from settings import Settings
 from x11 import X11
 from x11_clipboard import X11Clipboard
-from search import snippet
+from search import snippet, visible_title
 from paste_keys import PasteKeys
+from color_swatch import rgba
 
 
 class App:
@@ -131,6 +132,7 @@ class App:
             #linuxxy-footer label { color: #aaa; font-size: 11px; }
             #linuxxy-index { color: #aaa; font-size: 10px; min-width: 16px; }
             box.linuxxy-multi-selected { background-color: #4d624b; border-radius: 5px; color: white; }
+            #linuxxy-color-swatch { border: 1px solid #888; border-radius: 2px; }
         """)
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
@@ -223,7 +225,9 @@ class App:
             else:
                 visual = None
                 title = value.rsplit(" ", 1)[0] if kind == "files" else value
-                preview, visible_matches = snippet(title, matches)
+                display_title = visible_title(title, self.settings.get("show_special_symbols")) \
+                    if kind in ("text", "rich") else title
+                preview, visible_matches = snippet(display_title, matches)
             label = Gtk.Label(label=preview, xalign=0)
             if visible_matches:
                 tags = {
@@ -253,6 +257,16 @@ class App:
             if kind == "files":
                 content.pack_start(Gtk.Image.new_from_icon_name("folder", Gtk.IconSize.MENU),
                                    False, False, 2)
+            if kind in ("text", "rich") and self.settings.get("show_hex_color_swatch"):
+                color = rgba(value)
+                if color is not None:
+                    swatch = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 14, 14)
+                    swatch.fill(color)
+                    swatch_box = Gtk.Box()
+                    swatch_box.set_name("linuxxy-color-swatch")
+                    swatch_box.set_valign(Gtk.Align.CENTER)
+                    swatch_box.pack_start(Gtk.Image.new_from_pixbuf(swatch), False, False, 0)
+                    content.pack_start(swatch_box, False, False, 2)
             if visual:
                 content.pack_start(visual, False, False, 0)
             content.pack_start(label, True, True, 0)
@@ -656,7 +670,7 @@ class App:
         self.cancel_preview()
         self.window.hide()
         window = Gtk.Window(title="Linuxxy Preferences")
-        window.set_default_size(460, 430)
+        window.set_default_size(460, 510)
         window.set_border_width(14)
         window.set_transient_for(self.window)
         window.set_keep_above(True)
@@ -749,6 +763,12 @@ class App:
             highlight_match.append(key, name)
         highlight_match.set_active_id(self.settings.get("highlight_match"))
         field(grids["Appearance"], 6, "Highlight matches", highlight_match)
+        color_swatch = Gtk.CheckButton(label="Show color swatches for hex colors")
+        color_swatch.set_active(self.settings.get("show_hex_color_swatch"))
+        grids["Appearance"].attach(color_swatch, 0, 7, 2, 1)
+        special_symbols = Gtk.CheckButton(label="Show spaces, tabs, and line breaks")
+        special_symbols.set_active(self.settings.get("show_special_symbols"))
+        grids["Appearance"].attach(special_symbols, 0, 8, 2, 1)
         buttons = Gtk.Box(spacing=8)
         layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
@@ -798,6 +818,8 @@ class App:
                 ("preview_delay_ms", preview_delay.get_value_as_int()),
                 ("highlight_match", highlight_match.get_active_id()),
                 ("image_max_height", image_height.get_value_as_int()),
+                ("show_hex_color_swatch", color_swatch.get_active()),
+                ("show_special_symbols", special_symbols.get_active()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),
             ):
