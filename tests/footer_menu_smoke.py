@@ -89,6 +89,35 @@ try:
             pump(.8)
             popup = GdkX11.X11Window.get_xid(app.window.get_window())
             screenshot(popup, 'ui_footer_menu.png')
+            activate(popup)
+            keys('Down')
+            pump()
+            assert app.selected() is not None
+            keys('Down')
+            pump()
+            assert app.selected() is not None
+            keys('Down')
+            pump()
+            assert app.window.get_focus() is app.clear_button
+            keys('Down')
+            pump()
+            assert app.window.get_focus() is app.preferences_button
+            screenshot(popup, 'ui_footer_keyboard.png')
+            keys('Up')
+            keys('Up')
+            pump()
+            assert app.selected() and app.selected().value == 'Disposable note'
+            keys('Down')
+            keys('Down')
+            keys('Down')
+            pump()
+            assert app.window.get_focus() is app.about_button
+            keys('Return')
+            pump()
+            assert app.about and app.about.get_visible()
+            keys('Escape')
+            pump()
+            assert app.about is None
             click(app, app.about_button, popup)
             assert app.about and app.about.get_visible()
             screenshot(GdkX11.X11Window.get_xid(app.about.get_window()), 'ui_about.png')
@@ -138,7 +167,7 @@ try:
             keys('Control_L', 'q')
             pump()
             assert app.closed
-            print('Footer rows, About, Clear, Preferences, and Ctrl+Q passed')
+            print('Footer keyboard navigation, About, Clear, Preferences, and Ctrl+Q passed')
         finally:
             if not app.closed:
                 app.quit()

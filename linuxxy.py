@@ -52,7 +52,10 @@ class RowCollection:
         return self.app.pin_rows.get_selected_row() or self.app.history_rows.get_selected_row()
 
     def select_row(self, row):
-        if row is not None:
+        if row is None:
+            self.app.pin_rows.unselect_all()
+            self.app.history_rows.unselect_all()
+        else:
             row.get_parent().select_row(row)
 
 
@@ -195,6 +198,10 @@ class App:
         self.preferences_button = footer_button("Preferences…", "Ctrl+,", self.show_settings)
         self.about_button = footer_button("About Linuxxy", "", self.show_about)
         self.quit_button = footer_button("Quit", "Ctrl+Q", self.quit)
+        self.footer_buttons = (self.queue_button, self.clear_button,
+                               self.preferences_button, self.about_button, self.quit_button)
+        for button in self.footer_buttons:
+            button.connect("key-press-event", self.on_key)
         self.preview_divider = Gtk.EventBox()
         self.preview_divider.set_name("linuxxy-preview-divider")
         self.preview_divider.set_no_show_all(True)
@@ -1187,12 +1194,29 @@ class App:
         if event.keyval in (Gdk.KEY_Up, Gdk.KEY_Down) and not (ctrl or alt or shift) and \
                 not self.search.is_focus():
             rows = self.rows.get_children()
-            if rows:
+            footer = [button for button in self.footer_buttons
+                      if self.footer.get_visible() and button.get_visible()]
+            focus = self.window.get_focus()
+            if focus in footer:
+                index = footer.index(focus) + (1 if event.keyval == Gdk.KEY_Down else -1)
+                if index < 0 and rows:
+                    rows[-1].grab_focus()
+                    self.rows.select_row(rows[-1])
+                elif footer:
+                    footer[index % len(footer)].grab_focus()
+            elif rows:
                 current = self.selected()
                 index = rows.index(current) if current in rows else -1
-                index = max(0, min(len(rows) - 1, index + (1 if event.keyval == Gdk.KEY_Down else -1)))
-                self.rows.select_row(rows[index])
-                rows[index].grab_focus()
+                next_index = index + (1 if event.keyval == Gdk.KEY_Down else -1)
+                if next_index >= len(rows) and footer:
+                    self.rows.select_row(None)
+                    footer[0].grab_focus()
+                else:
+                    row = rows[max(0, min(len(rows) - 1, next_index))]
+                    self.rows.select_row(row)
+                    row.grab_focus()
+            elif footer:
+                footer[0].grab_focus()
             return True
         if not self.search.get_visible() and self.window.get_visible():
             if event.keyval == Gdk.KEY_BackSpace and self.search.get_text():
@@ -1261,6 +1285,10 @@ class App:
             self.confirm_clear(all_items=shift)
             return True
         if event.keyval == Gdk.KEY_Return:
+            focus = self.window.get_focus()
+            if self.footer.get_visible() and focus in self.footer_buttons:
+                focus.clicked()
+                return True
             row = self.selected() or next(iter(self.rows.get_children()), None)
             if row:
                 if alt and shift:
@@ -1289,6 +1317,9 @@ class App:
             if first:
                 self.rows.select_row(first)
                 first.grab_focus()
+            elif self.footer.get_visible():
+                next((button for button in self.footer_buttons if button.get_visible()),
+                     self.search).grab_focus()
             return True
         return False
 
