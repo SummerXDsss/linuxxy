@@ -96,6 +96,16 @@ class App:
         self.search.connect("changed", self.search_changed)
         self.search.connect("key-press-event", self.search_key)
         self.search_line.pack_start(self.search, True, True, 0)
+        self.preview_button = Gtk.Button()
+        self.preview_button.set_name("linuxxy-preview-toggle")
+        self.preview_button.set_image(Gtk.Image.new_from_icon_name(
+            "view-sidebar-symbolic", Gtk.IconSize.MENU))
+        self.preview_button.set_relief(Gtk.ReliefStyle.NONE)
+        self.preview_button.set_can_focus(False)
+        self.preview_button.set_tooltip_text("Open preview (Ctrl+Space)")
+        self.preview_button.connect("clicked", lambda *_: self.toggle_preview())
+        self.search_line.pack_end(self.preview_button, False, False, 2)
+        self.preview_button.show_all()
         self.search_separator = Gtk.Separator()
         self.search_separator.set_no_show_all(True)
         box.pack_start(self.search_separator, False, False, 4)
@@ -181,6 +191,7 @@ class App:
         provider.load_from_data(b"""
             #linuxxy-popup { background: #28292d; border: 1px solid #4a4b50; border-radius: 9px; }
             #linuxxy-search { min-height: 30px; margin: 2px 2px 4px 2px; }
+            #linuxxy-preview-toggle { min-width: 24px; padding: 0 2px; color: #b8b9bd; }
             #linuxxy-title { color: #b8b9bd; font-size: 12px; }
             #linuxxy-list, #linuxxy-list > row { background: transparent; }
             #linuxxy-list > row { min-height: 31px; border-radius: 5px; }
@@ -507,6 +518,7 @@ class App:
             self.preview = None
             self.preview_auto = False
             self.preview_entry_id = None
+            self.preview_button.set_tooltip_text("Open preview (Ctrl+Space)")
             self.window.resize(*self.popup_size)
             self.pending_popup_origin = (x, y)
             self.window.move(x, y)
@@ -819,10 +831,7 @@ class App:
             self.delete_selected()
             return True
         if matches_action_shortcut(self.settings.get("preview_shortcut"), event):
-            if getattr(self, "preview", None):
-                self.cancel_preview()
-            elif self.selected():
-                self.show_preview()
+            self.toggle_preview()
             return True
         if event.keyval == Gdk.KEY_F2:
             self.edit_selected()
@@ -1292,6 +1301,12 @@ class App:
         self.paused = not self.paused
         self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
 
+    def toggle_preview(self):
+        if self.preview is not None:
+            self.cancel_preview()
+        elif self.selected():
+            self.show_preview()
+
     def show_preview(self, automatic=False):
         row = self.selected()
         if not row:
@@ -1391,6 +1406,7 @@ class App:
         origin = max(work.x, origin)
         self.preview_side = side
         self.preview_width = width
+        self.preview_button.set_tooltip_text("Close preview (Ctrl+Space)")
         style = self.preview_pane.get_style_context()
         if side == "left":
             style.add_class("left")

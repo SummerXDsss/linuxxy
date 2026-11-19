@@ -72,7 +72,8 @@ You can also add entries to the queue from the right-click menu. Choosing
 another item or copying new content cancels the queue.
 Use **Ctrl+Alt+Delete** to clear unpinned history or **Ctrl+Alt+Shift+Delete**
 to clear all history, including pinned entries. Clear unpinned history from the footer.
-Press **Ctrl+Space** to open or close a selected result's full text or image
+Press **Ctrl+Space** or click the sidebar button beside search to open or close
+a selected result's full text or image
 preview beside the list. The preview follows the selected item and opens on the
 side with room. It shows the source application when known, copy times and count,
 and image dimensions and size. This shortcut is configurable. The side preview

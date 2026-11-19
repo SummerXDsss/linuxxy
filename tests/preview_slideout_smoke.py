@@ -97,6 +97,12 @@ try:
             keys('Control_L', 'space')
             pump()
             assert app.preview is None and app.window.get_size()[0] == 440
+            app.preview_button.clicked()
+            pump()
+            assert app.preview is app.preview_pane
+            app.preview_button.clicked()
+            pump()
+            assert app.preview is None and app.window.get_size()[0] == 440
             keys('Escape')
             pump()
             assert not app.window.get_visible()
