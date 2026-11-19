@@ -611,6 +611,9 @@ class App:
             self.rows.select_row(restored)
         elif self.rows.get_children():
             self.rows.select_row(self.rows.get_children()[0])
+        selected = self.selected()
+        if selected is not None:
+            self.mark_selected(selected.get_parent(), selected)
         self.update_multi_selection()
         self.pin_count = pin_count
         self.pin_image_count = pin_image_count
@@ -1490,6 +1493,10 @@ class App:
             if self.x11:
                 self.return_window = self.x11.active_window()
             self.refresh()
+            first = next(iter(self.rows.get_children()), None)
+            if first is not None:
+                self.rows.select_row(first)
+                self.mark_selected(first.get_parent(), first)
             x, y = self.position_popup()
             self.window.capture_backdrop(x, y)
             self.window.show_all()

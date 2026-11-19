@@ -174,6 +174,9 @@ checks a live system theme change.
 The [glass theme test](tests/glass_theme_smoke.py) opens the popup over a patterned
 desktop, captures light, dark, and preview screenshots, and checks the blurred
 backdrop and live appearance change.
+The [many-copy test](tests/many_copies_smoke.py) copies twelve texts from a
+separate X11 process, checks their newest-first order, the initial highlight,
+the popup height limit, and scrolling through the real popup.
 The [shortcut cycle test](tests/shortcut_cycle_smoke.py) exercises held modifiers,
 repeated opening-key presses, and selection on release with real X11 events.
 The [action shortcut test](tests/action_shortcuts_smoke.py) records new pin,
