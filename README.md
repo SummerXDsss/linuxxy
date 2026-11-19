@@ -31,17 +31,21 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
 1. Copy text or an image in any application.
 2. Press **Super+Shift+V** or click the tray icon.
 3. Type to search. Press **Down** to focus results, then use arrow keys.
-4. Press **Enter** or double-click a result to paste it into the previous window.
-5. Press **Ctrl+Enter** or click **Copy** to place it on the clipboard without
+4. Press **Enter** or click a result to paste it into the previous window.
+5. Press **Ctrl+Enter** or use **Copy** in the right-click menu to place it on the clipboard without
    pasting. **Escape** hides the window.
 
-You can also pin or delete the selected entry, or clear all unpinned entries.
+Use **Ctrl+1…9** to choose a visible result directly. Click a row to choose it,
+or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
+**Alt+P** to pin and **Alt+Delete** to delete the selected entry.
+Clear unpinned history from the footer.
 Press **Space** on a selected result to preview its full text or image.
-Open **Preferences…** from the tray menu or press **Ctrl+,** while the popup is
-open. You can change the opening shortcut, default paste action, history limit,
-clipboard check interval, search mode (exact, fuzzy, regex, or mixed), pinned
-item position, popup position, clear-on-quit behavior, and launch at
-login. Preferences are saved in `$XDG_CONFIG_HOME/linuxxy/settings.json`.
+Open **Preferences…** from the footer or tray menu, or press **Ctrl+,** while
+the popup is open. General, Storage, and Appearance pages cover the opening
+shortcut, default paste action, text/image capture, history limit, clipboard
+check interval, search mode (exact, fuzzy, regex, or mixed), pinned item
+position, popup position, footer visibility, clear-on-quit behavior, and launch
+at login. Preferences are saved in `$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Enabling launch at login creates `$XDG_CONFIG_HOME/autostart/linuxxy.desktop`.
 
 History is stored in an unencrypted SQLite database at
@@ -59,7 +63,8 @@ and copyright notice are preserved in [LICENSE-Maccy](LICENSE-Maccy).
 
 The [UI smoke test](tests/ui_smoke.py) starts Linuxxy and a separate GTK paste
 target, sends real X11 keyboard shortcuts, and saves screenshots of the popup,
-preview, preferences, and pasted result to [screenshots](screenshots). It needs
-`wmctrl`, `xwd`, and `ffmpeg` in addition to the runtime dependencies. Run it
-from an X11 desktop with `python3 tests/ui_smoke.py` when no other application
-has an active keyboard grab.
+preview, preferences, and pasted result to [screenshots](screenshots). The
+[visual sample](tests/visual_sample.py) renders the popup and all three settings
+pages with known sample data. These scripts need `wmctrl`, `xwd`, and `ffmpeg`
+in addition to the runtime dependencies. Run the smoke test from an X11
+desktop when no other application has an active keyboard grab.

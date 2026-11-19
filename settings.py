@@ -15,6 +15,9 @@ DEFAULTS = {
     "launch_at_login": False,
     "search_mode": "exact",
     "pins_position": "top",
+    "save_text": True,
+    "save_images": True,
+    "show_footer": True,
 }
 
 

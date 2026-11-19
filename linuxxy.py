@@ -34,33 +34,50 @@ class App:
         self.return_window = None
 
         self.window = Gtk.Window(title="Linuxxy")
-        self.window.set_default_size(440, 500)
+        self.window.set_default_size(440, 120)
+        self.window.set_decorated(False)
+        self.window.set_resizable(False)
+        self.window.set_keep_above(True)
         self.window.set_skip_taskbar_hint(True)
         self.window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        self.window.set_name("linuxxy-popup")
         self.window.connect("delete-event", self.hide_window)
         self.window.connect("key-press-event", self.on_key)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        box.set_border_width(8)
+        self.install_style()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.set_border_width(7)
         self.window.add(box)
         self.search = Gtk.SearchEntry()
+        self.search.set_name("linuxxy-search")
         self.search.set_placeholder_text("Search clipboard history")
         self.search.connect("changed", lambda *_: GLib.idle_add(self.refresh))
         self.search.connect("key-press-event", self.search_key)
-        box.pack_start(self.search, False, False, 0)
+        box.pack_start(self.search, False, False, 3)
+        box.pack_start(Gtk.Separator(), False, False, 4)
         scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         box.pack_start(scroll, True, True, 0)
         self.rows = Gtk.ListBox()
+        self.rows.set_name("linuxxy-list")
         self.rows.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.rows.connect("row-activated", self.choose)
+        self.rows.connect("row-selected", self.mark_selected)
         scroll.add(self.rows)
-        buttons = Gtk.Box(spacing=6)
-        box.pack_start(buttons, False, False, 0)
-        for label, callback in (("Paste", self.paste_selected), ("Copy", self.copy_selected),
-                                ("Pin / Unpin", self.toggle_pin),
-                                ("Delete", self.delete_selected), ("Clear unpinned", self.clear)):
+        box.pack_start(Gtk.Separator(), False, False, 4)
+        footer = Gtk.Box(spacing=6)
+        footer.set_name("linuxxy-footer")
+        footer.set_no_show_all(not self.settings.get("show_footer"))
+        self.footer = footer
+        box.pack_start(footer, False, False, 0)
+        for label, callback in (("Clear", self.clear), ("Preferences", self.show_settings),
+                                ("Quit", self.quit)):
             button = Gtk.Button(label=label)
+            button.set_relief(Gtk.ReliefStyle.NONE)
             button.connect("clicked", callback)
-            buttons.pack_start(button, True, True, 0)
+            footer.pack_start(button, False, False, 0)
+        hint = Gtk.Label(label="↵  Copy / Paste")
+        hint.set_xalign(1)
+        footer.pack_end(hint, False, False, 4)
 
         self.tray = Gtk.StatusIcon.new_from_icon_name("edit-paste")
         self.tray.set_tooltip_text("Linuxxy")
@@ -75,6 +92,22 @@ class App:
                 self.x11 = X11(self.toggle_window, self.settings.get("shortcut"))
             except (RuntimeError, OSError, ValueError) as error:
                 print(f"Global shortcut unavailable: {error}")
+
+    def install_style(self):
+        provider = Gtk.CssProvider()
+        provider.load_from_data(b"""
+            #linuxxy-popup { background: #28292d; border: 1px solid #4a4b50; border-radius: 9px; }
+            #linuxxy-search { min-height: 30px; margin: 2px 2px 4px 2px; }
+            #linuxxy-list, #linuxxy-list > row { background: transparent; }
+            #linuxxy-list > row { min-height: 31px; border-radius: 5px; }
+            box.linuxxy-selected { background-color: #466ca8; border-radius: 5px; color: white; }
+            #linuxxy-footer button { min-height: 20px; padding: 0 6px; font-size: 11px; }
+            #linuxxy-footer label { color: #aaa; font-size: 11px; }
+            #linuxxy-index { color: #aaa; font-size: 10px; min-width: 16px; }
+        """)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
 
     def on_clipboard_change(self, *_):
         GLib.idle_add(self.capture, True)
@@ -96,9 +129,9 @@ class App:
         if signature != self.last_signature or force:
             self.last_signature = signature
             if not self.paused:
-                if image and signature:
+                if image and signature and self.settings.get("save_images"):
                     self.history.add_image(data)
-                elif not image and text:
+                elif not image and text and self.settings.get("save_text"):
                     self.history.add(text)
                 self.refresh()
         return False
@@ -109,13 +142,21 @@ class App:
         for child in self.rows.get_children():
             self.rows.remove(child)
         restored = None
-        for entry_id, value, pinned, kind, data in self.history.list(
+        previous_pin = None
+        row_count = 0
+        image_count = 0
+        for index, (entry_id, value, pinned, kind, data) in enumerate(self.history.list(
             self.search.get_text(), self.settings.get("search_mode"),
             self.settings.get("pins_position")
-        ):
+        )):
             row = Gtk.ListBoxRow()
+            row.set_name("linuxxy-row")
             row.entry_id, row.value, row.pinned = entry_id, value, bool(pinned)
             row.kind, row.data = kind, data
+            row.connect("button-press-event", self.row_click)
+            if previous_pin is not None and previous_pin != pinned:
+                row.set_header(Gtk.Separator())
+            previous_pin = pinned
             if kind == "image" and data:
                 loader = GdkPixbuf.PixbufLoader.new_with_type("png")
                 loader.write(data)
@@ -127,29 +168,77 @@ class App:
                                                 GdkPixbuf.InterpType.BILINEAR)
                 visual = Gtk.Image.new_from_pixbuf(thumbnail)
                 preview = "Image"
+                image_count += 1
             else:
                 visual = None
                 preview = " ".join(value.split())[:160]
-            label = Gtk.Label(label=("📌 " if pinned else "") + preview, xalign=0)
+            label = Gtk.Label(label=preview, xalign=0)
             label.set_ellipsize(3)
-            label.set_margin_top(5)
-            label.set_margin_bottom(5)
+            label.set_margin_top(4)
+            label.set_margin_bottom(4)
             if kind == "text":
                 row.set_tooltip_text(value[:10000])
             content = Gtk.Box(spacing=8)
+            content.set_border_width(4)
+            row.content = content
+            if pinned:
+                content.pack_start(Gtk.Image.new_from_icon_name("emblem-favorite", Gtk.IconSize.MENU),
+                                   False, False, 2)
             if visual:
                 content.pack_start(visual, False, False, 0)
             content.pack_start(label, True, True, 0)
+            if index < 9:
+                badge = Gtk.Label(label=str(index + 1))
+                badge.set_name("linuxxy-index")
+                content.pack_end(badge, False, False, 4)
             row.add(content)
             self.rows.add(row)
+            row_count += 1
             if entry_id == selected_id:
                 restored = row
         self.rows.show_all()
         if restored:
             self.rows.select_row(restored)
+        elif self.rows.get_children():
+            self.rows.select_row(self.rows.get_children()[0])
+        self.resize_popup(row_count, image_count)
+
+    def resize_popup(self, count, image_count=0):
+        # Match the content instead of leaving a large empty window behind.
+        visible = min(count, 9)
+        height = 105 + max(34, visible * 40 + min(image_count, visible) * 30)
+        if not self.settings.get("show_footer"):
+            height -= 26
+        self.window.resize(440, min(height, 470))
+
+    def row_click(self, row, event):
+        if event.button == 1:
+            self.choose(row)
+            return True
+        if event.button != 3:
+            return False
+        self.rows.select_row(row)
+        menu = Gtk.Menu()
+        for label, callback in (("Paste", self.paste_selected),
+                                ("Copy", self.copy_selected),
+                                ("Preview", self.show_preview),
+                                ("Unpin" if row.pinned else "Pin", self.toggle_pin),
+                                ("Delete", self.delete_selected)):
+            item = Gtk.MenuItem(label=label)
+            item.connect("activate", lambda _item, fn=callback: fn())
+            menu.append(item)
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
 
     def selected(self):
         return self.rows.get_selected_row()
+
+    def mark_selected(self, _list, selected):
+        for row in self.rows.get_children():
+            row.content.get_style_context().remove_class("linuxxy-selected")
+        if selected:
+            selected.content.get_style_context().add_class("linuxxy-selected")
 
     def choose(self, row, paste=None):
         if paste is None:
@@ -206,11 +295,18 @@ class App:
         self.refresh()
 
     def on_key(self, _window, event):
+        if event.state & Gdk.ModifierType.CONTROL_MASK:
+            digit = Gdk.keyval_name(event.keyval)
+            if digit and digit in "123456789":
+                rows = self.rows.get_children()
+                if int(digit) <= len(rows):
+                    self.choose(rows[int(digit) - 1])
+                return True
         if event.keyval == Gdk.KEY_comma and event.state & Gdk.ModifierType.CONTROL_MASK:
             self.show_settings()
             return True
         if event.keyval == Gdk.KEY_Escape:
-            self.window.hide()
+            self.hide_window()
             return True
         if event.keyval == Gdk.KEY_p and event.state & Gdk.ModifierType.MOD1_MASK:
             self.toggle_pin()
@@ -249,15 +345,20 @@ class App:
 
     def toggle_window(self):
         if self.window.get_visible():
-            self.window.hide()
+            self.hide_window()
         else:
             if self.x11:
                 self.return_window = self.x11.active_window()
+            self.refresh()
             if self.settings.get("popup_at_cursor"):
                 display = Gdk.Display.get_default()
                 _screen, x, y, _mods = display.get_pointer()
+                monitor = display.get_monitor_at_point(x, y)
+                work = monitor.get_workarea()
+                width, height = self.window.get_size()
+                x = max(work.x, min(x, work.x + work.width - width))
+                y = max(work.y, min(y, work.y + work.height - height))
                 self.window.move(x, y)
-            self.refresh()
             self.window.show_all()
             self.window.present()
             self.search.grab_focus()
@@ -278,52 +379,73 @@ class App:
         if getattr(self, "preferences", None) and self.preferences.get_visible():
             self.preferences.present()
             return
+        self.window.hide()
         window = Gtk.Window(title="Linuxxy Preferences")
-        window.set_default_size(410, 300)
-        window.set_border_width(16)
+        window.set_default_size(460, 320)
+        window.set_border_width(14)
         window.set_transient_for(self.window)
+        window.set_keep_above(True)
         window.connect("destroy", lambda *_: setattr(self, "preferences", None))
-        grid = Gtk.Grid(column_spacing=14, row_spacing=12)
-        window.add(grid)
+        layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        window.add(layout)
+        notebook = Gtk.Notebook()
+        layout.pack_start(notebook, True, True, 0)
+        grids = {}
+        for title in ("General", "Storage", "Appearance"):
+            grid = Gtk.Grid(column_spacing=16, row_spacing=14)
+            grid.set_border_width(16)
+            notebook.append_page(grid, Gtk.Label(label=title))
+            grids[title] = grid
 
-        def field(row, label, widget):
+        def field(grid, row, label, widget):
             grid.attach(Gtk.Label(label=label, xalign=0), 0, row, 1, 1)
             grid.attach(widget, 1, row, 1, 1)
 
         shortcut = Gtk.Entry(text=self.settings.get("shortcut"))
         shortcut.set_tooltip_text("Example: Super+Shift+V")
-        field(0, "Open shortcut", shortcut)
+        field(grids["General"], 0, "Open shortcut", shortcut)
         paste = Gtk.CheckButton(label="Paste by default (Ctrl+Enter reverses)")
         paste.set_active(self.settings.get("paste_by_default"))
-        grid.attach(paste, 0, 1, 2, 1)
-        size = Gtk.SpinButton.new_with_range(1, 10000, 1)
-        size.set_value(self.settings.get("history_size"))
-        field(2, "History items", size)
-        interval = Gtk.SpinButton.new_with_range(100, 5000, 100)
-        interval.set_value(self.settings.get("check_interval_ms"))
-        field(3, "Clipboard check (ms)", interval)
+        grids["General"].attach(paste, 0, 1, 2, 1)
         search_mode = Gtk.ComboBoxText()
         for key, label in (("exact", "Exact"), ("fuzzy", "Fuzzy"),
                            ("regex", "Regular expression"), ("mixed", "Mixed")):
             search_mode.append(key, label)
         search_mode.set_active_id(self.settings.get("search_mode"))
-        field(4, "Search mode", search_mode)
+        field(grids["General"], 2, "Search mode", search_mode)
+        launch_at_login = Gtk.CheckButton(label="Launch at login")
+        launch_at_login.set_active(self.settings.get("launch_at_login"))
+        grids["General"].attach(launch_at_login, 0, 3, 2, 1)
+
+        size = Gtk.SpinButton.new_with_range(1, 10000, 1)
+        size.set_value(self.settings.get("history_size"))
+        save_text = Gtk.CheckButton(label="Save text")
+        save_text.set_active(self.settings.get("save_text"))
+        grids["Storage"].attach(save_text, 0, 0, 2, 1)
+        save_images = Gtk.CheckButton(label="Save images")
+        save_images.set_active(self.settings.get("save_images"))
+        grids["Storage"].attach(save_images, 0, 1, 2, 1)
+        field(grids["Storage"], 2, "History items", size)
+        interval = Gtk.SpinButton.new_with_range(100, 5000, 100)
+        interval.set_value(self.settings.get("check_interval_ms"))
+        field(grids["Storage"], 3, "Clipboard check (ms)", interval)
+        clear_on_quit = Gtk.CheckButton(label="Clear history on quit")
+        clear_on_quit.set_active(self.settings.get("clear_on_quit"))
+        grids["Storage"].attach(clear_on_quit, 0, 4, 2, 1)
+
         pins_position = Gtk.ComboBoxText()
         pins_position.append("top", "Top")
         pins_position.append("bottom", "Bottom")
         pins_position.set_active_id(self.settings.get("pins_position"))
-        field(5, "Pinned items", pins_position)
+        field(grids["Appearance"], 0, "Pinned items", pins_position)
         position = Gtk.CheckButton(label="Open near pointer")
         position.set_active(self.settings.get("popup_at_cursor"))
-        grid.attach(position, 0, 6, 2, 1)
-        clear_on_quit = Gtk.CheckButton(label="Clear history on quit")
-        clear_on_quit.set_active(self.settings.get("clear_on_quit"))
-        grid.attach(clear_on_quit, 0, 7, 2, 1)
-        launch_at_login = Gtk.CheckButton(label="Launch at login")
-        launch_at_login.set_active(self.settings.get("launch_at_login"))
-        grid.attach(launch_at_login, 0, 8, 2, 1)
+        grids["Appearance"].attach(position, 0, 1, 2, 1)
+        show_footer = Gtk.CheckButton(label="Show footer")
+        show_footer.set_active(self.settings.get("show_footer"))
+        grids["Appearance"].attach(show_footer, 0, 2, 2, 1)
         buttons = Gtk.Box(spacing=8)
-        grid.attach(buttons, 0, 9, 2, 1)
+        layout.pack_end(buttons, False, False, 0)
         cancel = Gtk.Button(label="Cancel")
         cancel.connect("clicked", lambda *_: window.destroy())
         buttons.pack_end(cancel, False, False, 0)
@@ -357,10 +479,13 @@ class App:
                 ("shortcut", new_shortcut),
                 ("paste_by_default", paste.get_active()),
                 ("history_size", size.get_value_as_int()),
+                ("save_text", save_text.get_active()),
+                ("save_images", save_images.get_active()),
                 ("check_interval_ms", interval.get_value_as_int()),
                 ("search_mode", search_mode.get_active_id()),
                 ("pins_position", pins_position.get_active_id()),
                 ("popup_at_cursor", position.get_active()),
+                ("show_footer", show_footer.get_active()),
                 ("clear_on_quit", clear_on_quit.get_active()),
                 ("launch_at_login", launch_at_login.get_active()),
             ):
@@ -368,6 +493,8 @@ class App:
             self.settings.save()
             set_autostart(self.settings.get("launch_at_login"))
             self.history.set_limit(self.settings.get("history_size"))
+            self.footer.set_no_show_all(not self.settings.get("show_footer"))
+            self.footer.set_visible(self.settings.get("show_footer"))
             GLib.source_remove(self.poll_id)
             self.poll_id = GLib.timeout_add(self.settings.get("check_interval_ms"), self.poll_clipboard)
             self.refresh()
