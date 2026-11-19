@@ -8,6 +8,7 @@ from urllib.parse import urlparse, unquote
 from search import match
 
 PIN_KEYS = "bcdefghijklmnorstuxy"
+_UNSET = object()
 
 
 class History:
@@ -34,6 +35,8 @@ class History:
             self.db.execute("ALTER TABLE entries ADD COLUMN pin_order INTEGER")
         if "pin_key" not in columns:
             self.db.execute("ALTER TABLE entries ADD COLUMN pin_key TEXT")
+        if "alias" not in columns:
+            self.db.execute("ALTER TABLE entries ADD COLUMN alias TEXT")
         self.db.execute("UPDATE entries SET first_copied_at=copied_at WHERE first_copied_at IS NULL")
         self.db.execute("UPDATE entries SET copy_count=1 WHERE copy_count IS NULL")
         self.db.execute("UPDATE entries SET pin_order=id WHERE pinned=1 AND pin_order IS NULL")
@@ -108,26 +111,98 @@ class History:
              sort_by: str = "last_copied"):
         rows = self.db.execute(
             "SELECT id, text, pinned, kind, data, first_copied_at, copy_count, "
-            "pin_order, copied_at, pin_key FROM entries "
+            "pin_order, copied_at, pin_key, alias FROM entries "
             "ORDER BY copied_at DESC, id DESC"
         ).fetchall()
         candidates = ("exact", "regex", "fuzzy") if mode == "mixed" else (mode,)
         matches = []
         effective_mode = candidates[-1]
         for candidate in candidates:
-            matches = [(row, result) for row in rows
-                       if (result := match(row[1], query, candidate)) is not None]
+            matches = []
+            for row in rows:
+                display = row[10] or row[1]
+                result = match(display, query, candidate)
+                if result is None and row[10]:
+                    display = row[1]
+                    result = match(display, query, candidate)
+                if result is not None:
+                    matches.append((row, result, display))
             effective_mode = candidate
             if matches or mode != "mixed":
                 break
         metric = {"first_copied": 5, "most_copied": 6}.get(sort_by, 8)
         def order(item):
-            row, result = item
+            row, result, _display = item
             if row[2]:
                 return (1 if pins_position == "bottom" else 0, row[7] or row[0], 0, 0)
             score = result[0] if query and effective_mode == "fuzzy" else 0
             return (0 if pins_position == "bottom" else 1, score, -row[metric], -row[0])
-        return [row[:5] + (row[9], result[1]) for row, result in sorted(matches, key=order)]
+        return [row[:5] + (row[9], result[1], shown)
+                for row, result, shown in sorted(matches, key=order)]
+
+    def get(self, entry_id: int):
+        row = self.db.execute(
+            "SELECT text, kind, data, pinned, pin_key, alias FROM entries WHERE id=?",
+            (entry_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(zip(("text", "kind", "data", "pinned", "pin_key", "alias"), row))
+
+    def edit(self, entry_id: int, *, alias=_UNSET, content=None, pin_key=None):
+        current = self.get(entry_id)
+        if current is None:
+            raise ValueError("This history item no longer exists")
+        if alias is not _UNSET:
+            if alias is not None and not isinstance(alias, str):
+                raise ValueError("Alias must be text")
+            alias = alias.strip() if alias is not None else None
+            alias = alias or None
+        if content is not None:
+            if current["kind"] not in ("text", "rich"):
+                raise ValueError("This content cannot be edited")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("Content cannot be empty")
+        if pin_key is not None:
+            if not isinstance(pin_key, str):
+                raise ValueError("Invalid pin shortcut")
+            pin_key = pin_key.lower()
+            if not current["pinned"] or pin_key not in PIN_KEYS:
+                raise ValueError("Invalid pin shortcut")
+            occupied = self.db.execute(
+                "SELECT 1 FROM entries WHERE pinned=1 AND pin_key=? AND id<>?",
+                (pin_key, entry_id),
+            ).fetchone()
+            if occupied:
+                raise ValueError("This pin shortcut is already in use")
+        fields = []
+        values = []
+        if alias is not _UNSET:
+            fields.append("alias=?")
+            values.append(alias)
+        if content is not None and content != current["text"]:
+            fields.extend(("text=?", "kind='text'", "data=NULL"))
+            values.append(content)
+        if pin_key is not None:
+            fields.append("pin_key=?")
+            values.append(pin_key)
+        if not fields:
+            return
+        try:
+            with self.db:
+                self.db.execute(
+                    "UPDATE entries SET " + ", ".join(fields) + " WHERE id=?",
+                    (*values, entry_id),
+                )
+        except sqlite3.IntegrityError as error:
+            raise ValueError("An item with this content already exists") from error
+
+    def available_pin_keys(self, entry_id: int):
+        occupied = {row[0] for row in self.db.execute(
+            "SELECT pin_key FROM entries WHERE pinned=1 AND id<>? AND pin_key IS NOT NULL",
+            (entry_id,),
+        )}
+        return [key for key in PIN_KEYS if key not in occupied]
 
     def pin(self, entry_id: int, pinned: bool):
         with self.db:

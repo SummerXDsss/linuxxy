@@ -196,7 +196,7 @@ class App:
         previous_pin = None
         row_count = 0
         image_count = 0
-        for index, (entry_id, value, pinned, kind, data, pin_key, matches) in enumerate(self.history.list(
+        for index, (entry_id, value, pinned, kind, data, pin_key, matches, shown) in enumerate(self.history.list(
             self.search.get_text(), self.settings.get("search_mode"),
             self.settings.get("pins_position"), self.settings.get("sort_by")
         )):
@@ -221,13 +221,17 @@ class App:
                                                 GdkPixbuf.InterpType.BILINEAR)
                 visual = Gtk.Image.new_from_pixbuf(thumbnail)
                 preview, visible_matches = snippet("Image", matches)
+                row.display_title = "Image"
                 image_count += 1
             else:
                 visual = None
-                title = value.rsplit(" ", 1)[0] if kind == "files" else value
+                title = shown
+                if kind == "files" and shown == value:
+                    title = value.rsplit(" ", 1)[0]
                 display_title = visible_title(title, self.settings.get("show_special_symbols")) \
                     if kind in ("text", "rich") else title
                 preview, visible_matches = snippet(display_title, matches)
+                row.display_title = title
             label = Gtk.Label(label=preview, xalign=0)
             if visible_matches:
                 tags = {
@@ -319,6 +323,7 @@ class App:
                    ("Remove from queue" if row.entry_id in self.multi_selection else "Add to queue",
                     lambda: self.extend_selection(row, False)),
                    ("Start paste queue", self.start_paste_stack),
+                   ("Edit…", self.edit_selected),
                    ("Preview", self.show_preview),
                    ("Unpin" if row.pinned else "Pin", self.toggle_pin),
                    ("Delete", self.delete_selected)]
@@ -521,6 +526,107 @@ class App:
         if row := self.selected():
             self.choose(row, paste=False)
 
+    def edit_selected(self, *_):
+        row = self.selected()
+        if not row:
+            return
+        current = self.history.get(row.entry_id)
+        if current is None:
+            self.refresh()
+            return
+        self.cancel_preview()
+        editor = Gtk.Dialog(title="Edit clipboard item", transient_for=self.window,
+                            flags=Gtk.DialogFlags.MODAL)
+        editor.set_default_size(540, 390)
+        editor.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        save_button = editor.add_button("Save", Gtk.ResponseType.OK)
+        save_button.get_style_context().add_class("suggested-action")
+        editor.set_default_response(Gtk.ResponseType.OK)
+        area = editor.get_content_area()
+        area.set_border_width(14)
+        area.set_spacing(10)
+        grid = Gtk.Grid(column_spacing=12, row_spacing=10)
+        area.pack_start(grid, False, False, 0)
+        alias = Gtk.Entry()
+        alias.set_hexpand(True)
+        alias.set_placeholder_text("Shown in history (optional)")
+        alias.set_text(current["alias"] or "")
+        alias.set_sensitive(current["kind"] != "image")
+        grid.attach(Gtk.Label(label="Alias", xalign=0), 0, 0, 1, 1)
+        grid.attach(alias, 1, 0, 1, 1)
+        pin_key = None
+        if current["pinned"]:
+            pin_key = Gtk.ComboBoxText()
+            for key in self.history.available_pin_keys(row.entry_id):
+                pin_key.append(key, key.upper())
+            pin_key.set_active_id(current["pin_key"])
+            grid.attach(Gtk.Label(label="Pin shortcut", xalign=0), 0, 1, 1, 1)
+            grid.attach(pin_key, 1, 1, 1, 1)
+        area.pack_start(Gtk.Label(label="Content", xalign=0), False, False, 0)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_min_content_height(190)
+        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        area.pack_start(scroll, True, True, 0)
+        content = Gtk.TextView()
+        content.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        content.set_left_margin(8)
+        content.set_right_margin(8)
+        editable = current["kind"] in ("text", "rich")
+        content.set_editable(editable)
+        if current["kind"] == "image":
+            initial_text = "Image content cannot be edited."
+        elif current["kind"] == "files":
+            initial_text = current["data"].decode("utf-8").replace("\r", "")
+        else:
+            initial_text = current["text"]
+        content.get_buffer().set_text(initial_text)
+        scroll.add(content)
+        warning = None
+        if current["kind"] == "rich":
+            warning = Gtk.Label(label="Changing the content will remove its formatting.", xalign=0)
+            warning.set_no_show_all(True)
+            area.pack_start(warning, False, False, 0)
+
+        def update_save(*_):
+            start, end = content.get_buffer().get_bounds()
+            content_changed = editable and (
+                content.get_buffer().get_text(start, end, True) != current["text"]
+            )
+            alias_changed = (alias.get_text().strip() or None) != current["alias"]
+            pin_changed = bool(pin_key and pin_key.get_active_id() != current["pin_key"])
+            save_button.set_sensitive(alias_changed or content_changed or pin_changed)
+            if warning:
+                warning.set_visible(content_changed)
+
+        alias.connect("changed", update_save)
+        content.get_buffer().connect("changed", update_save)
+        if pin_key:
+            pin_key.connect("changed", update_save)
+        saved = False
+        editor.show_all()
+        update_save()
+        while editor.run() == Gtk.ResponseType.OK:
+            start, end = content.get_buffer().get_bounds()
+            new_content = content.get_buffer().get_text(start, end, True)
+            try:
+                self.history.edit(
+                    row.entry_id, alias=alias.get_text(),
+                    content=new_content if editable and new_content != current["text"] else None,
+                    pin_key=pin_key.get_active_id() if pin_key else None,
+                )
+            except ValueError as error:
+                alert = Gtk.MessageDialog(transient_for=editor, modal=True,
+                                          message_type=Gtk.MessageType.ERROR,
+                                          buttons=Gtk.ButtonsType.CLOSE, text=str(error))
+                alert.run()
+                alert.destroy()
+                continue
+            saved = True
+            break
+        editor.destroy()
+        if saved:
+            self.refresh()
+
     def toggle_pin(self, *_):
         if row := self.selected():
             self.history.pin(row.entry_id, not row.pinned)
@@ -545,6 +651,9 @@ class App:
         ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
         shift = bool(event.state & Gdk.ModifierType.SHIFT_MASK)
+        if event.keyval == Gdk.KEY_F2:
+            self.edit_selected()
+            return True
         if alt and event.keyval in (Gdk.KEY_Up, Gdk.KEY_Down):
             self.move_pin(-1 if event.keyval == Gdk.KEY_Up else 1)
             return True

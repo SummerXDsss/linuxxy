@@ -55,6 +55,10 @@ or right-click for Paste, Copy, Preview, Pin, and Delete. You can also use
 **Alt+P** to pin and **Alt+Delete** to delete the selected entry.
 Pinned entries can be moved with **Alt+Up/Down** or the right-click menu;
 their letter shortcuts stay with each entry.
+Press **F2** or choose **Edit…** from the right-click menu to change an item's
+display name, text content, or pinned letter shortcut. Changing formatted text
+content converts that item to plain text; changing only its display name keeps
+the original formatting.
 Use **Ctrl+click** to select several results, or focus a result and press
 **Shift+Up/Down** to extend the selection. Click **Queue N** or press
 **Ctrl+Shift+Enter** to start a paste queue. The first item is copied; each
@@ -105,6 +109,10 @@ and file copying between separate X11 applications, checks content after exit
 when a clipboard manager is present, and restores the clipboard afterward.
 The [paste queue test](tests/paste_stack_smoke.py) selects three results in the
 real popup and verifies their order through three actual Ctrl+V pastes.
+The [editor UI test](tests/editor_ui_smoke.py) opens a real item editor and saves
+screenshots before and after changing its display name, content, and pin shortcut.
+The [editor data test](tests/editor_behavior.py) checks persistence, searching by
+alias or content, rich-text conversion, and duplicate rejection.
 The [history test](tests/history_behavior.py) verifies migration of older data,
 copy counts, sorting, and pin order.
 The [search test](tests/search_behavior.py) verifies matching modes, fuzzy
