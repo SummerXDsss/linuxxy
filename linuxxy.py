@@ -76,13 +76,13 @@ class App:
                 print(f"Global shortcut unavailable: {error}")
 
     def on_clipboard_change(self, *_):
-        GLib.idle_add(self.capture)
+        GLib.idle_add(self.capture, True)
 
     def poll_clipboard(self):
         self.capture()
         return True
 
-    def capture(self):
+    def capture(self, force=False):
         image = self.clipboard.wait_for_image() if self.clipboard.wait_is_image_available() else None
         if image:
             ok, data = image.save_to_bufferv("png", [], [])
@@ -90,7 +90,7 @@ class App:
         else:
             text = self.clipboard.wait_for_text()
             signature = ("text", text)
-        if signature != self.last_signature:
+        if signature != self.last_signature or force:
             self.last_signature = signature
             if not self.paused:
                 if image and signature:
@@ -131,6 +131,8 @@ class App:
             label.set_ellipsize(3)
             label.set_margin_top(5)
             label.set_margin_bottom(5)
+            if kind == "text":
+                row.set_tooltip_text(value[:10000])
             content = Gtk.Box(spacing=8)
             if visual:
                 content.pack_start(visual, False, False, 0)
@@ -166,11 +168,16 @@ class App:
         self.refresh()
         if paste and self.x11 and self.return_window:
             self.x11.activate(self.return_window)
-            GLib.timeout_add(180, self.delayed_paste)
+            self.paste_attempts = 0
+            GLib.timeout_add(50, self.delayed_paste)
 
     def delayed_paste(self):
-        if self.x11:
+        self.paste_attempts += 1
+        if self.x11 and self.x11.active_window() == self.return_window:
             self.x11.paste()
+            return False
+        if self.paste_attempts < 20:
+            return True
         return False
 
     def paste_selected(self, *_):
@@ -207,6 +214,9 @@ class App:
             return True
         if event.keyval == Gdk.KEY_Delete and event.state & Gdk.ModifierType.MOD1_MASK:
             self.delete_selected()
+            return True
+        if event.keyval == Gdk.KEY_space and self.selected():
+            self.show_preview()
             return True
         if event.keyval == Gdk.KEY_Return:
             row = self.selected() or next(iter(self.rows.get_children()), None)
@@ -368,6 +378,44 @@ class App:
     def toggle_pause(self):
         self.paused = not self.paused
         self.tray.set_tooltip_text("Linuxxy (paused)" if self.paused else "Linuxxy")
+
+    def show_preview(self):
+        row = self.selected()
+        if not row:
+            return
+        if getattr(self, "preview", None):
+            self.preview.destroy()
+        window = Gtk.Window(title="Linuxxy Preview")
+        window.set_transient_for(self.window)
+        window.set_default_size(600, 420)
+        window.connect("key-press-event", lambda _w, event: self.close_preview(event))
+        window.connect("destroy", lambda *_: setattr(self, "preview", None))
+        scroll = Gtk.ScrolledWindow()
+        window.add(scroll)
+        if row.kind == "image":
+            loader = GdkPixbuf.PixbufLoader.new_with_type("png")
+            loader.write(row.data)
+            loader.close()
+            image = Gtk.Image.new_from_pixbuf(loader.get_pixbuf())
+            scroll.add_with_viewport(image)
+        else:
+            text = Gtk.TextView()
+            text.set_editable(False)
+            text.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+            text.set_monospace(True)
+            text.set_left_margin(12)
+            text.set_right_margin(12)
+            text.get_buffer().set_text(row.value)
+            scroll.add(text)
+        self.preview = window
+        window.show_all()
+        window.present()
+
+    def close_preview(self, event):
+        if event.keyval in (Gdk.KEY_Escape, Gdk.KEY_space):
+            self.preview.destroy()
+            return True
+        return False
 
     def quit(self):
         if self.settings.get("clear_on_quit"):

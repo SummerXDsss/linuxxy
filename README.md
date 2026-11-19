@@ -36,6 +36,7 @@ second clipboard watcher. Use the tray menu to pause monitoring or quit.
    pasting. **Escape** hides the window.
 
 You can also pin or delete the selected entry, or clear all unpinned entries.
+Press **Space** on a selected result to preview its full text or image.
 Open **Preferences…** from the tray menu or press **Ctrl+,** while the popup is
 open. You can change the opening shortcut, default paste action, history limit,
 clipboard check interval, search mode (exact, fuzzy, regex, or mixed), pinned
