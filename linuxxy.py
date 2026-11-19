@@ -27,7 +27,8 @@ class App:
         self.history = History(data_home / "linuxxy" / "history.sqlite",
                                limit=self.settings.get("history_size"))
         self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
-        self.clipboard.connect("owner-change", self.on_clipboard_change)
+        self.clipboard_handler = self.clipboard.connect("owner-change", self.on_clipboard_change)
+        self.closed = False
         self.paused = False
         self.x11 = None
         self.return_window = None
@@ -43,7 +44,7 @@ class App:
         self.window.add(box)
         self.search = Gtk.SearchEntry()
         self.search.set_placeholder_text("Search clipboard history")
-        self.search.connect("search-changed", lambda *_: self.refresh())
+        self.search.connect("changed", lambda *_: GLib.idle_add(self.refresh))
         self.search.connect("key-press-event", self.search_key)
         box.pack_start(self.search, False, False, 0)
         scroll = Gtk.ScrolledWindow()
@@ -83,6 +84,8 @@ class App:
         return True
 
     def capture(self, force=False):
+        if self.closed:
+            return False
         image = self.clipboard.wait_for_image() if self.clipboard.wait_is_image_available() else None
         if image:
             ok, data = image.save_to_bufferv("png", [], [])
@@ -417,13 +420,22 @@ class App:
             return True
         return False
 
-    def quit(self):
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        self.clipboard.disconnect(self.clipboard_handler)
+        GLib.source_remove(self.poll_id)
         if self.settings.get("clear_on_quit"):
             self.history.clear_all()
         if self.x11:
             self.x11.close()
         self.history.close()
-        Gtk.main_quit()
+
+    def quit(self):
+        self.close()
+        if Gtk.main_level():
+            Gtk.main_quit()
 
 
 if __name__ == "__main__":

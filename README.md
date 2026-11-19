@@ -54,3 +54,12 @@ files, and rich text are future work.
 
 Linuxxy is MIT licensed; see [LICENSE](LICENSE). Maccy's original MIT license
 and copyright notice are preserved in [LICENSE-Maccy](LICENSE-Maccy).
+
+## Desktop test
+
+The [UI smoke test](tests/ui_smoke.py) starts Linuxxy and a separate GTK paste
+target, sends real X11 keyboard shortcuts, and saves screenshots of the popup,
+preview, preferences, and pasted result to [screenshots](screenshots). It needs
+`wmctrl`, `xwd`, and `ffmpeg` in addition to the runtime dependencies. Run it
+from an X11 desktop with `python3 tests/ui_smoke.py` when no other application
+has an active keyboard grab.
