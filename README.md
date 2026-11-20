@@ -21,6 +21,29 @@ sudo apt install python3-gi gir1.2-gtk-3.0 python3-xlib python3-cairo python3-pi
 
 ## Install
 
+For Debian, Ubuntu, and Linux Mint, download the
+[prebuilt `.deb` package](packages/linuxxy_0.1.0_all.deb) and install it with:
+
+```sh
+sudo apt install ./linuxxy_0.1.0_all.deb
+```
+
+To build the package from source:
+
+```sh
+python3 packaging/build_deb.py
+sudo apt install ./dist/linuxxy_0.1.0_all.deb
+```
+
+If you previously used the per-user installer below, quit Linuxxy from its tray
+menu and remove that copy with
+`python3 ~/.local/share/linuxxy/install.py --uninstall` before installing the
+package. This keeps your clipboard history and preferences. After installing,
+turn **Launch at login** off and on again in Preferences to recreate the
+autostart entry for the packaged location.
+
+For a per-user installation without administrator access:
+
 ```sh
 python3 install.py
 ```
