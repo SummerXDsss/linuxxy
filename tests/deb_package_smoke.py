@@ -21,11 +21,12 @@ with tempfile.TemporaryDirectory(prefix="linuxxy-deb-test-") as directory:
     temp = Path(directory)
     subprocess.run([sys.executable, str(ROOT / "packaging/build_deb.py"),
                     "--output-dir", str(temp)], check=True, capture_output=True)
-    package = temp / "linuxxy_0.1.0_all.deb"
+    package = temp / "linuxxy_0.1.1_all.deb"
     fields = subprocess.check_output(
         ["dpkg-deb", "--field", str(package)], text=True)
     assert "Package: linuxxy\n" in fields
     assert "Architecture: all\n" in fields
+    assert "Version: 0.1.1\n" in fields
     for dependency in ("python3-gi", "gir1.2-gtk-3.0", "python3-xlib",
                        "python3-cairo", "python3-pil"):
         assert dependency in fields
@@ -37,6 +38,7 @@ with tempfile.TemporaryDirectory(prefix="linuxxy-deb-test-") as directory:
     app_dir = stage / "usr/share/linuxxy"
     for name in MODULES:
         assert (app_dir / name).read_bytes() == (ROOT / name).read_bytes()
+    assert (app_dir / "LICENSE").read_bytes() == (ROOT / "LICENSE").read_bytes()
     desktop = stage / "usr/share/applications/linuxxy.desktop"
     desktop_entry = GLib.KeyFile()
     desktop_entry.load_from_file(str(desktop), GLib.KeyFileFlags.NONE)

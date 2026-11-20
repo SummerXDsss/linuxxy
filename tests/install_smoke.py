@@ -23,6 +23,7 @@ with tempfile.TemporaryDirectory() as directory:
     desktop_app = Gio.DesktopAppInfo.new_from_filename(str(desktop))
     assert desktop_app and str(launcher) in desktop_app.get_commandline()
     assert (installed / 'LICENSE-Maccy').exists()
+    assert (installed / 'LICENSE').read_bytes() == (ROOT / 'LICENSE').read_bytes()
 
     env = dict(os.environ, XDG_CONFIG_HOME=str(temp / 'config'),
                XDG_DATA_HOME=str(temp / 'data'), XDG_RUNTIME_DIR=str(temp),

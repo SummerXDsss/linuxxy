@@ -1632,7 +1632,8 @@ class App:
         dialog.set_program_name("Linuxxy")
         dialog.set_comments(self.t("An X11 clipboard manager inspired by Maccy"))
         dialog.set_website("https://github.com/SummerXDsss/linuxxy")
-        dialog.set_license_type(Gtk.License.MIT_X11)
+        dialog.set_license_type(Gtk.License.CUSTOM)
+        dialog.set_license(Path(__file__).with_name("LICENSE").read_text(encoding="utf-8"))
         dialog.connect("response", lambda window, *_: window.destroy())
         dialog.connect("destroy", lambda *_: setattr(self, "about", None))
         self.about = dialog

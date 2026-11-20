@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROGRAM_FILES = (
     "linuxxy.py", "glass.py", "i18n.py", "history.py", "settings.py",
     "autostart.py", "x11.py", "x11_clipboard.py", "paste_keys.py",
-    "color_swatch.py", "action_shortcuts.py", "search.py",
+    "color_swatch.py", "action_shortcuts.py", "search.py", "LICENSE",
 )
 DEPENDENCIES = (
     "python3", "python3-gi", "gir1.2-gtk-3.0", "python3-xlib",
@@ -76,7 +76,7 @@ def build(output_dir, version):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="0.1.0")
+    parser.add_argument("--version", default="0.1.1")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist")
     args = parser.parse_args()
     print(build(args.output_dir.resolve(), args.version))

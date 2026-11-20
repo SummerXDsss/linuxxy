@@ -22,17 +22,17 @@ sudo apt install python3-gi gir1.2-gtk-3.0 python3-xlib python3-cairo python3-pi
 ## Install
 
 For Debian, Ubuntu, and Linux Mint, download the
-[prebuilt `.deb` package](packages/linuxxy_0.1.0_all.deb) and install it with:
+[prebuilt `.deb` package](packages/linuxxy_0.1.1_all.deb) and install it with:
 
 ```sh
-sudo apt install ./linuxxy_0.1.0_all.deb
+sudo apt install ./linuxxy_0.1.1_all.deb
 ```
 
 To build the package from source:
 
 ```sh
 python3 packaging/build_deb.py
-sudo apt install ./dist/linuxxy_0.1.0_all.deb
+sudo apt install ./dist/linuxxy_0.1.1_all.deb
 ```
 
 If you previously used the per-user installer below, quit Linuxxy from its tray
@@ -165,8 +165,16 @@ content on exit so it remains available to paste.
 
 ## License
 
-Linuxxy is MIT licensed; see [LICENSE](LICENSE). Maccy's original MIT license
-and copyright notice are preserved in [LICENSE-Maccy](LICENSE-Maccy).
+Starting with version 0.1.1, Linuxxy's own code is distributed under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, modification,
+and redistribution are permitted under its terms. Commercial use requires a
+separate license from the copyright holder. This is a source-available license,
+not an OSI-approved open-source license.
+
+Versions released through 0.1.0 were offered under MIT; the rights granted for
+those copies are not withdrawn by this change. Maccy's separate MIT copyright
+notice and license remain in [LICENSE-Maccy](LICENSE-Maccy) and are not subject
+to Linuxxy's new noncommercial terms.
 
 ## Desktop test
 

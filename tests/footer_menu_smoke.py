@@ -115,6 +115,8 @@ try:
             keys('Return')
             pump()
             assert app.about and app.about.get_visible()
+            assert app.about.get_license_type() == Gtk.License.CUSTOM
+            assert 'PolyForm Noncommercial License 1.0.0' in app.about.get_license()
             keys('Escape')
             pump()
             assert app.about is None
