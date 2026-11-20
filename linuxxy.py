@@ -27,6 +27,7 @@ from search import snippet, visible_title
 from paste_keys import PasteKeys
 from color_swatch import rgba
 from glass import GlassWindow
+from i18n import resolve_language, translate
 from action_shortcuts import (action_shortcut_from_event, matches_action_shortcut,
                               validate_action_shortcuts)
 
@@ -63,6 +64,7 @@ class RowCollection:
 class App:
     def __init__(self):
         self.settings = Settings()
+        self.language = resolve_language(self.settings.get("language"))
         data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
         self.history = History(data_home / "linuxxy" / "history.sqlite",
                                limit=self.settings.get("history_size"))
@@ -238,12 +240,16 @@ class App:
         preview_header.pack_end(close_preview, False, False, 0)
         self.preview_scroll = Gtk.ScrolledWindow()
         self.preview_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        for scroll in (self.history_scroll, self.pin_scroll, self.preview_scroll):
+            scroll.set_kinetic_scrolling(True)
+            scroll.set_overlay_scrolling(True)
         self.preview_pane.pack_start(self.preview_scroll, True, True, 0)
         self.preview_metadata = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.preview_metadata.set_border_width(9)
         self.preview_pane.pack_end(self.preview_metadata, False, False, 0)
         self.preview_pane.hide()
         self.update_search_visibility()
+        self.apply_language()
 
         self.tray = Gtk.StatusIcon.new_from_icon_name("edit-paste")
         self.tray.connect("activate", lambda *_: self.toggle_window())
@@ -262,6 +268,43 @@ class App:
                 print(f"Global shortcut unavailable: {error}")
         self.capture()
         self.refresh()
+
+    def t(self, text):
+        return translate(text, self.language)
+
+    def localize_widget_tree(self, widget):
+        if isinstance(widget, Gtk.Window) and widget.get_title():
+            widget.set_title(self.t(widget.get_title()))
+        if isinstance(widget, Gtk.Label):
+            widget.set_text(self.t(widget.get_text()))
+        elif isinstance(widget, Gtk.Button) and widget.get_label():
+            widget.set_label(self.t(widget.get_label()))
+        if isinstance(widget, Gtk.Entry) and widget.get_placeholder_text():
+            widget.set_placeholder_text(self.t(widget.get_placeholder_text()))
+        if widget.get_tooltip_text():
+            widget.set_tooltip_text(self.t(widget.get_tooltip_text()))
+        if isinstance(widget, Gtk.ComboBoxText):
+            model = widget.get_model()
+            for row in model:
+                row[0] = self.t(row[0])
+        if isinstance(widget, Gtk.Notebook):
+            for index in range(widget.get_n_pages()):
+                tab = widget.get_tab_label(widget.get_nth_page(index))
+                if tab is not None:
+                    self.localize_widget_tree(tab)
+        if isinstance(widget, Gtk.Container):
+            for child in widget.get_children():
+                self.localize_widget_tree(child)
+
+    def apply_language(self):
+        self.localize_widget_tree(self.search_line)
+        self.localize_widget_tree(self.footer)
+        self.update_multi_selection()
+        self.preview_heading.set_text(self.t("Preview"))
+        self.preview_close_button.set_tooltip_text(self.t("Close preview"))
+        self.preview_button.set_tooltip_text(self.t(
+            "Close preview (Ctrl+Space)" if self.preview is not None else
+            "Open preview (Ctrl+Space)"))
 
     def make_list(self):
         rows = Gtk.ListBox()
@@ -339,21 +382,24 @@ class App:
             "preview_muted": "#555963", "metadata": "#646870",
         })
         css = """
-            #linuxxy-popup { background: @popup@; border: 1px solid @border@; border-radius: 9px; }
+            #linuxxy-popup { background: @popup@; border: 1px solid @border@; border-radius: 14px; }
+            #linuxxy-preferences button, #linuxxy-preferences entry,
+            #linuxxy-preferences combobox { border-radius: 9px; }
+            #linuxxy-dialog button { border-radius: 9px; margin: 3px; }
             #linuxxy-popup separator { background: @border@; }
-            #linuxxy-search { min-height: 30px; margin: 2px 2px 4px 2px; }
+            #linuxxy-search { min-height: 30px; margin: 2px 2px 4px 2px; border-radius: 12px; }
             #linuxxy-preview-toggle { min-width: 24px; padding: 0 2px; color: @muted@; }
             #linuxxy-title { color: @muted@; font-size: 12px; }
             #linuxxy-list, #linuxxy-list > row { background: transparent; }
-            #linuxxy-list > row { min-height: 31px; border-radius: 5px; }
+            #linuxxy-list > row { min-height: 31px; border-radius: 9px; }
             #linuxxy-list > row label { color: @text@; }
-            box.linuxxy-selected { background-color: @selected@; border-radius: 5px; }
+            box.linuxxy-selected { background-color: @selected@; border-radius: 9px; }
             #linuxxy-list > row box.linuxxy-selected label { color: white; }
-            #linuxxy-footer button { min-height: 24px; padding: 1px 9px; font-size: 12px; color: @text@; }
-            #linuxxy-footer button:hover { background: @hover@; border-radius: 5px; }
+            #linuxxy-footer button { min-height: 24px; padding: 1px 9px; font-size: 12px; color: @text@; border-radius: 9px; }
+            #linuxxy-footer button:hover { background: @hover@; border-radius: 9px; }
             #linuxxy-footer-shortcut { color: @shortcut@; font-size: 10px; }
             #linuxxy-index { color: @index@; font-size: 10px; min-width: 16px; }
-            box.linuxxy-multi-selected { background-color: @multi@; border-radius: 5px; }
+            box.linuxxy-multi-selected { background-color: @multi@; border-radius: 9px; }
             #linuxxy-list > row box.linuxxy-multi-selected label { color: @multi_text@; }
             #linuxxy-list > row box.linuxxy-drop-target { box-shadow: inset 0 0 0 2px @selected@; }
             #linuxxy-color-swatch { border: 1px solid #888; border-radius: 2px; }
@@ -369,7 +415,7 @@ class App:
         """
         if glass:
             css += """
-                #linuxxy-popup { background: transparent; border: none; border-radius: 16px; }
+                #linuxxy-popup { background: transparent; border: none; border-radius: 20px; }
                 #linuxxy-popup scrolledwindow, #linuxxy-popup viewport,
                 #linuxxy-popup textview, #linuxxy-popup textview text {
                     background: transparent;
@@ -378,12 +424,12 @@ class App:
                 #linuxxy-search {
                     background: @glass_search@;
                     border: 1px solid @glass_search_border@;
-                    border-radius: 10px;
+                    border-radius: 12px;
                     box-shadow: 0 1px 4px @glass_shadow@;
                 }
                 #linuxxy-footer button:hover, #linuxxy-footer button:focus {
                     background: @glass_hover@;
-                    border-radius: 7px;
+                    border-radius: 9px;
                 }
                 #linuxxy-preview, #linuxxy-preview textview,
                 #linuxxy-preview textview text { background: transparent; }
@@ -396,6 +442,12 @@ class App:
                 "glass_shadow": "rgba(0,0,0,0.16)" if theme == "dark" else "rgba(54,74,112,0.12)",
                 "glass_hover": "rgba(255,255,255,0.13)" if theme == "dark" else "rgba(255,255,255,0.44)",
             })
+        if self.language == "zh_CN":
+            css += """
+                #linuxxy-popup, #linuxxy-preferences {
+                    font-family: "Noto Sans CJK SC", "Noto Sans", sans-serif;
+                }
+            """
         for key, value in colors.items():
             css = css.replace(f"@{key}@", value)
         if not hasattr(self, "style_provider"):
@@ -541,7 +593,9 @@ class App:
                                                 GdkPixbuf.InterpType.BILINEAR)
                 visual = Gtk.Image.new_from_pixbuf(thumbnail)
                 preview, visible_matches = snippet("Image", matches)
-                row.display_title = "Image"
+                if not visible_matches:
+                    preview = self.t(preview)
+                row.display_title = preview
                 image_count += 1
             else:
                 visual = None
@@ -578,7 +632,8 @@ class App:
             if source_app and self.settings.get("show_application_icons"):
                 app_icon, app_name = self.source_icon(source_app)
                 app_icon.set_pixel_size(15)
-                app_icon.set_tooltip_text(f"Copied from {app_name}")
+                app_icon.set_tooltip_text(
+                    f"{self.t('Application')}: {app_name}")
                 content.pack_start(app_icon, False, False, 2)
             if pinned:
                 content.pack_start(Gtk.Image.new_from_icon_name("emblem-favorite", Gtk.IconSize.MENU),
@@ -604,7 +659,9 @@ class App:
                 badge.set_name("linuxxy-index")
                 content.pack_end(badge, False, False, 4)
                 if pin_key:
-                    badge.set_tooltip_text(f"Ctrl+{pin_key.upper()} copy · Alt+{pin_key.upper()} paste")
+                    badge.set_tooltip_text(
+                        f"Ctrl+{pin_key.upper()} {self.t('Copy')} · "
+                        f"Alt+{pin_key.upper()} {self.t('Paste')}")
             row.add(content)
             (self.pin_rows if pinned else self.history_rows).add(row)
             pin_count += bool(pinned)
@@ -838,7 +895,7 @@ class App:
             actions.insert(-1, ("Move pin up", lambda: self.move_pin(-1)))
             actions.insert(-1, ("Move pin down", lambda: self.move_pin(1)))
         for label, callback in actions:
-            item = Gtk.MenuItem(label=label)
+            item = Gtk.MenuItem(label=self.t(label))
             item.connect("activate", lambda _item, fn=callback: fn())
             if label == "Start paste queue":
                 item.set_sensitive(len(self.multi_selection) >= 2)
@@ -873,7 +930,7 @@ class App:
                 style.add_class("linuxxy-multi-selected")
             else:
                 style.remove_class("linuxxy-multi-selected")
-        self.queue_button.set_label(f"Queue {len(self.multi_selection)}")
+        self.queue_button.set_label(f"{self.t('Queue')} {len(self.multi_selection)}")
         self.queue_button.set_visible(len(self.multi_selection) >= 2)
 
     def extend_selection(self, row, shift):
@@ -907,7 +964,7 @@ class App:
             self.preview = None
             self.preview_auto = False
             self.preview_entry_id = None
-            self.preview_button.set_tooltip_text("Open preview (Ctrl+Space)")
+            self.preview_button.set_tooltip_text(self.t("Open preview (Ctrl+Space)"))
             self.window.resize(*self.popup_size)
             self.pending_popup_origin = (x, y)
             self.window.move(x, y)
@@ -1020,7 +1077,10 @@ class App:
             alert = Gtk.MessageDialog(transient_for=self.window, modal=True,
                                       message_type=Gtk.MessageType.ERROR,
                                       buttons=Gtk.ButtonsType.CLOSE,
-                                      text=f"Paste queue unavailable: {error}")
+                                      text=(f"粘贴队列不可用：{error}" if self.language == "zh_CN"
+                                            else f"Paste queue unavailable: {error}"))
+            alert.set_name("linuxxy-dialog")
+            self.localize_widget_tree(alert)
             alert.run()
             alert.destroy()
             return
@@ -1085,8 +1145,9 @@ class App:
             self.refresh()
             return
         self.cancel_preview()
-        editor = Gtk.Dialog(title="Edit clipboard item", transient_for=self.window,
+        editor = Gtk.Dialog(title=self.t("Edit clipboard item"), transient_for=self.window,
                             flags=Gtk.DialogFlags.MODAL)
+        editor.set_name("linuxxy-dialog")
         editor.set_default_size(540, 390)
         editor.add_button("Cancel", Gtk.ResponseType.CANCEL)
         save_button = editor.add_button("Save", Gtk.ResponseType.OK)
@@ -1116,6 +1177,8 @@ class App:
         scroll = Gtk.ScrolledWindow()
         scroll.set_min_content_height(190)
         scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_kinetic_scrolling(True)
+        scroll.set_overlay_scrolling(True)
         area.pack_start(scroll, True, True, 0)
         content = Gtk.TextView()
         content.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
@@ -1124,7 +1187,7 @@ class App:
         editable = current["kind"] in ("text", "rich")
         content.set_editable(editable)
         if current["kind"] == "image":
-            initial_text = "Image content cannot be edited."
+            initial_text = self.t("Image content cannot be edited.")
         elif current["kind"] == "files":
             initial_text = current["data"].decode("utf-8").replace("\r", "")
         else:
@@ -1153,6 +1216,7 @@ class App:
         if pin_key:
             pin_key.connect("changed", update_save)
         saved = False
+        self.localize_widget_tree(editor)
         editor.show_all()
         update_save()
         while editor.run() == Gtk.ResponseType.OK:
@@ -1167,7 +1231,10 @@ class App:
             except ValueError as error:
                 alert = Gtk.MessageDialog(transient_for=editor, modal=True,
                                           message_type=Gtk.MessageType.ERROR,
-                                          buttons=Gtk.ButtonsType.CLOSE, text=str(error))
+                                          buttons=Gtk.ButtonsType.CLOSE,
+                                          text=self.t(str(error)))
+                alert.set_name("linuxxy-dialog")
+                self.localize_widget_tree(alert)
                 alert.run()
                 alert.destroy()
                 continue
@@ -1212,6 +1279,7 @@ class App:
                                    buttons=Gtk.ButtonsType.NONE,
                                    text=("Clear all clipboard history, including pinned items?"
                                          if all_items else "Clear unpinned clipboard history?"))
+        dialog.set_name("linuxxy-dialog")
         dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
         confirm = dialog.add_button("Clear all" if all_items else "Clear", Gtk.ResponseType.OK)
         confirm.get_style_context().add_class("destructive-action")
@@ -1231,6 +1299,7 @@ class App:
                 self.clear()
 
         dialog.connect("response", respond)
+        self.localize_widget_tree(dialog)
         dialog.show_all()
 
     def clear_all(self):
@@ -1549,7 +1618,7 @@ class App:
                                 ("Resume monitoring" if self.paused else "Pause monitoring", self.toggle_pause),
                                 ("About Linuxxy", self.show_about),
                                 ("Quit", self.quit)):
-            item = Gtk.MenuItem(label=label)
+            item = Gtk.MenuItem(label=self.t(label))
             item.connect("activate", lambda _item, fn=callback: fn())
             menu.append(item)
         menu.show_all()
@@ -1561,12 +1630,13 @@ class App:
             return
         dialog = Gtk.AboutDialog(transient_for=self.window)
         dialog.set_program_name("Linuxxy")
-        dialog.set_comments("An X11 clipboard manager inspired by Maccy")
+        dialog.set_comments(self.t("An X11 clipboard manager inspired by Maccy"))
         dialog.set_website("https://github.com/SummerXDsss/linuxxy")
         dialog.set_license_type(Gtk.License.MIT_X11)
         dialog.connect("response", lambda window, *_: window.destroy())
         dialog.connect("destroy", lambda *_: setattr(self, "about", None))
         self.about = dialog
+        self.localize_widget_tree(dialog)
         dialog.show_all()
         dialog.present()
 
@@ -1578,7 +1648,8 @@ class App:
         self.reset_shortcut_cycle()
         self.remember_popup_position()
         self.window.hide()
-        window = Gtk.Window(title="Linuxxy Preferences")
+        window = Gtk.Window(title=self.t("Linuxxy Preferences"))
+        window.set_name("linuxxy-preferences")
         window.set_default_size(500, 600)
         window.set_border_width(14)
         window.set_transient_for(self.window)
@@ -1595,6 +1666,8 @@ class App:
             if title == "Appearance":
                 scroller = Gtk.ScrolledWindow()
                 scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+                scroller.set_kinetic_scrolling(True)
+                scroller.set_overlay_scrolling(True)
                 scroller.add_with_viewport(grid)
                 notebook.append_page(scroller, Gtk.Label(label=title))
             else:
@@ -1630,11 +1703,11 @@ class App:
                 try:
                     recorded = action_shortcut_from_event(event)
                 except ValueError as error:
-                    entry.set_tooltip_text(str(error))
+                    entry.set_tooltip_text(self.t(str(error)))
                     return True
                 if recorded is not None:
                     entry.set_text(recorded)
-                    entry.set_tooltip_text("Click and press a shortcut. Use Clear to disable it.")
+                    entry.set_tooltip_text(self.t("Click and press a shortcut. Use Clear to disable it."))
                 return True
 
             entry.connect("key-press-event", record)
@@ -1839,6 +1912,13 @@ class App:
         show_recent.set_name("linuxxy-tray-recent-setting")
         show_recent.set_active(self.settings.get("show_recent_copy_in_tray"))
         grids["Appearance"].attach(show_recent, 0, 15, 2, 1)
+        language = Gtk.ComboBoxText()
+        language.set_name("linuxxy-language-setting")
+        for key, label in (("auto", "Automatic"), ("zh_CN", "Chinese (Simplified)"),
+                           ("en", "English")):
+            language.append(key, label)
+        language.set_active_id(self.settings.get("language"))
+        field(grids["Appearance"], 16, "Interface language", language)
         pause_monitoring = Gtk.CheckButton(label="Pause clipboard monitoring")
         pause_monitoring.set_name("linuxxy-pause-monitoring-setting")
         pause_monitoring.set_active(self.settings.get("monitoring_paused"))
@@ -1877,7 +1957,9 @@ class App:
                 alert = Gtk.MessageDialog(transient_for=window, modal=True,
                                           message_type=Gtk.MessageType.ERROR,
                                           buttons=Gtk.ButtonsType.CLOSE,
-                                          text=str(error))
+                                          text=self.t(str(error)))
+                alert.set_name("linuxxy-dialog")
+                self.localize_widget_tree(alert)
                 alert.run()
                 alert.destroy()
                 return
@@ -1903,6 +1985,7 @@ class App:
                 ("popup_position", position.get_active_id()),
                 ("popup_screen", int(screen_choice.get_active_id())),
                 ("popup_theme", popup_theme.get_active_id()),
+                ("language", language.get_active_id()),
                 ("popup_width", popup_width.get_value_as_int()),
                 ("popup_max_height", popup_height.get_value_as_int()),
                 ("show_footer", show_footer.get_active()),
@@ -1928,6 +2011,8 @@ class App:
             if reset_last_position[0]:
                 self.settings.set("popup_last_position", None, save=False)
             self.settings.save()
+            self.language = resolve_language(self.settings.get("language"))
+            self.apply_language()
             self.install_style()
             self.paused = self.settings.get("monitoring_paused")
             self.update_tray()
@@ -1945,6 +2030,7 @@ class App:
 
         save.connect("clicked", apply)
         self.preferences = window
+        self.localize_widget_tree(window)
         window.show_all()
         update_position_controls()
         window.present()
@@ -1962,9 +2048,11 @@ class App:
         self.tray.set_from_icon_name(icon)
         status = "Linuxxy"
         if self.paused:
-            status += " (paused)"
+            status += "（已暂停）" if self.language == "zh_CN" else " (paused)"
         if self.paste_stack:
-            status += f" ({len(self.paste_stack)} items in paste queue)"
+            status += (f"（粘贴队列中有 {len(self.paste_stack)} 项）"
+                       if self.language == "zh_CN" else
+                       f" ({len(self.paste_stack)} items in paste queue)")
         recent = ""
         if self.settings.get("show_recent_copy_in_tray"):
             recent = " ".join(self.history.latest_unpinned_title().split())[:30]
@@ -1993,8 +2081,8 @@ class App:
 
     def render_preview_content(self, row):
         self.preview_entry_id = row.entry_id
-        self.preview_heading.set_text("Image" if row.kind == "image" else
-                                      "Files" if row.kind == "files" else "Preview")
+        self.preview_heading.set_text(self.t("Image" if row.kind == "image" else
+                                             "Files" if row.kind == "files" else "Preview"))
         old = self.preview_scroll.get_child()
         if old is not None:
             self.preview_scroll.remove(old)
@@ -2010,7 +2098,7 @@ class App:
         metadata = self.history.metadata(row.entry_id)
         if metadata:
             def detail(label, value):
-                line = Gtk.Label(label=f"{label}: {value}", xalign=0)
+                line = Gtk.Label(label=f"{self.t(label)}: {value}", xalign=0)
                 line.set_name("linuxxy-preview-metadata")
                 line.set_ellipsize(3)
                 self.preview_metadata.pack_start(line, False, False, 0)
@@ -2079,7 +2167,7 @@ class App:
         origin = max(work.x, origin)
         self.preview_side = side
         self.preview_width = width
-        self.preview_button.set_tooltip_text("Close preview (Ctrl+Space)")
+        self.preview_button.set_tooltip_text(self.t("Close preview (Ctrl+Space)"))
         style = self.preview_pane.get_style_context()
         if side == "left":
             style.add_class("left")

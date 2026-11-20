@@ -10,6 +10,8 @@ gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
+CORNER_RADIUS = 20
+
 
 def blur_pixbuf(pixbuf):
     width, height = pixbuf.get_width(), pixbuf.get_height()
@@ -88,10 +90,11 @@ class GlassWindow(Gtk.Window):
 
     def do_draw(self, cr):
         if self.glass_enabled:
+            cr.set_antialias(cairo.ANTIALIAS_BEST)
             width, height = self.get_allocated_width(), self.get_allocated_height()
             if width > 0 and height > 0:
                 cr.save()
-                rounded_path(cr, width, height, 16)
+                rounded_path(cr, width, height, CORNER_RADIUS)
                 cr.clip()
                 if self.glass_dark:
                     cr.set_source_rgba(.09, .11, .15, .92)
@@ -117,7 +120,7 @@ class GlassWindow(Gtk.Window):
                 cr.restore()
 
                 cr.save()
-                rounded_path(cr, width, height, 16)
+                rounded_path(cr, width, height, CORNER_RADIUS)
                 highlight = cairo.LinearGradient(0, 0, width, height)
                 if self.glass_dark:
                     highlight.add_color_stop_rgba(0, 1, 1, 1, .62)
@@ -132,7 +135,7 @@ class GlassWindow(Gtk.Window):
                 cr.stroke()
                 cr.restore()
             cr.save()
-            rounded_path(cr, width, height, 16)
+            rounded_path(cr, width, height, CORNER_RADIUS)
             cr.clip()
             result = Gtk.Window.do_draw(self, cr)
             cr.restore()

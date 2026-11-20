@@ -9,13 +9,14 @@ by [Maccy](https://github.com/p0deje/Maccy).
 - Python 3
 - GTK 3 and PyGObject (`python3-gi` on Debian/Ubuntu)
 - Pycairo (`python3-cairo`); Pillow (`python3-pil`) is recommended for smooth glass blur
+- A CJK font for Chinese UI, such as `fonts-noto-cjk`
 - python-xlib (`python3-xlib` on Debian/Ubuntu)
 - XTEST and RECORD X11 extensions (normally installed with Xorg)
 
 On Debian/Ubuntu, install the Python dependencies with:
 
 ```sh
-sudo apt install python3-gi gir1.2-gtk-3.0 python3-xlib python3-cairo python3-pil
+sudo apt install python3-gi gir1.2-gtk-3.0 python3-xlib python3-cairo python3-pil fonts-noto-cjk
 ```
 
 ## Install
@@ -99,6 +100,7 @@ underline, or color), pinned item position, popup position (pointer, tray icon,
 active window, screen center, or last position), a screen choice for center and
 last-position mode on multi-monitor desktops, a reset for the saved position,
 popup theme (liquid glass, follow system, light, or dark), automatic preview and its delay,
+interface language (system, Simplified Chinese, or English),
 image thumbnail height, hex color swatches, visible whitespace
 symbols, search field visibility (always, while typing, or hidden), footer
 visibility, an optional title before the search field, optional source application
@@ -114,6 +116,9 @@ snapshot of the desktop beneath the popup, adds a translucent tint and edge
 highlight, and follows the system's light or dark appearance. The backdrop is
 captured when the popup opens; it does not update while the popup stays open.
 Without Pillow, a simpler scaled blur is used.
+The popup and settings use rounded controls, antialiased glass edges, and kinetic
+scrolling for touchpads. Simplified Chinese labels use a CJK font when available;
+the language can be selected even when the desktop locale is English.
 Storage shows the current history database size. Clearing history on quit keeps
 pinned items; the separate clear-all shortcut removes them.
 Drag the popup's title, empty top edge, or preview header to move it; the
@@ -179,6 +184,8 @@ checks a live system theme change.
 The [glass theme test](tests/glass_theme_smoke.py) opens the popup over a patterned
 desktop, captures light, dark, and preview screenshots, and checks the blurred
 backdrop and live appearance change.
+The [Chinese UI test](tests/chinese_ui_smoke.py) captures the popup and settings
+with Chinese labels, then changes the interface language back to English.
 The [many-copy test](tests/many_copies_smoke.py) copies twelve texts from a
 separate X11 process, checks their newest-first order, the initial highlight,
 the popup height limit, and scrolling through the real popup.

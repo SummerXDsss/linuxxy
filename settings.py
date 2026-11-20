@@ -21,6 +21,7 @@ DEFAULTS = {
     "popup_position": "cursor",
     "popup_screen": 0,
     "popup_theme": "glass",
+    "language": "auto",
     "popup_last_position": None,
     "launch_at_login": False,
     "search_mode": "exact",
@@ -107,6 +108,9 @@ class Settings:
         elif key == "popup_theme":
             if value not in ("glass", "system", "light", "dark"):
                 raise ValueError("Invalid popup theme")
+        elif key == "language":
+            if value not in ("auto", "zh_CN", "en"):
+                raise ValueError("Invalid interface language")
         elif key == "popup_last_position":
             if value is not None and (type(value) is not list or len(value) != 2 or
                                       any(type(coordinate) is not int for coordinate in value)):

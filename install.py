@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 
-PROGRAM_FILES = ("linuxxy.py", "glass.py", "history.py", "settings.py", "autostart.py", "install.py",
+PROGRAM_FILES = ("linuxxy.py", "glass.py", "i18n.py", "history.py", "settings.py", "autostart.py", "install.py",
                  "x11.py", "x11_clipboard.py", "paste_keys.py", "color_swatch.py",
                  "action_shortcuts.py",
                  "search.py", "README.md", "LICENSE",
