@@ -116,7 +116,9 @@ captured when the popup opens; it does not update while the popup stays open.
 Without Pillow, a simpler scaled blur is used.
 Storage shows the current history database size. Clearing history on quit keeps
 pinned items; the separate clear-all shortcut removes them.
-Drag the popup's title to move it; the last-position option reopens it there.
+Drag the popup's title, empty top edge, or preview header to move it; the
+last-position option reopens it there. Search, history items, and footer buttons
+keep their normal click actions.
 Preferences are saved in
 `$XDG_CONFIG_HOME/linuxxy/settings.json`.
 Source icons use the copying window's X11 application class and the matching
@@ -165,6 +167,9 @@ checks its saved source, and captures the popup with the matching desktop icon.
 The [popup position test](tests/popup_position_smoke.py) measures and captures
 the popup at each position in a real X11 session. Without a tray host, the tray
 position falls back to the pointer.
+The [window drag test](tests/window_drag_smoke.py) moves the real popup by its
+title, empty edge, and preview header, checks search interaction, and reopens it
+at the saved position.
 The [screen settings test](tests/screen_settings_smoke.py) exercises the screen
 picker and last-position reset in the real GTK settings window, using two
 simulated monitor work areas to check placement and persistence.

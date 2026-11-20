@@ -128,9 +128,11 @@ class App:
         self.title_label.set_no_show_all(True)
         self.title_handle = Gtk.EventBox()
         self.title_handle.set_no_show_all(True)
-        self.title_handle.set_tooltip_text("Drag to move popup")
+        self.title_handle.set_size_request(82, 30)
+        self.title_handle.set_tooltip_text("Drag here or the empty header to move popup")
         self.title_handle.add(self.title_label)
         self.title_handle.connect("button-press-event", self.drag_title)
+        self.title_handle.connect("realize", self.set_drag_cursor)
         self.search_line.pack_start(self.title_handle, False, False, 5)
         self.search = Gtk.SearchEntry()
         self.search.set_name("linuxxy-search")
@@ -228,6 +230,7 @@ class App:
         self.preview_heading.set_name("linuxxy-preview-heading")
         preview_header.pack_start(self.preview_heading, True, True, 0)
         close_preview = Gtk.Button(label="×")
+        self.preview_close_button = close_preview
         close_preview.set_relief(Gtk.ReliefStyle.NONE)
         close_preview.set_can_focus(False)
         close_preview.set_tooltip_text("Close preview")
@@ -282,6 +285,9 @@ class App:
                     row = self.row_at_root(x, y)
                     if row is not None and self.row_click(row, event):
                         return
+                    if self.draggable_background(event, x, y):
+                        self.window.begin_move_drag(1, int(x), int(y), event.time)
+                        return
                 elif event.type == Gdk.EventType.BUTTON_RELEASE and self.pin_drag is not None:
                     if event.get_button()[1] == 1:
                         self.finish_pin_drag(x, y)
@@ -290,6 +296,25 @@ class App:
                     self.update_pin_drag(x, y, True)
                     return
         Gtk.main_do_event(event)
+
+    def point_in_widget(self, widget, x, y):
+        if not widget.get_mapped():
+            return False
+        point = widget.translate_coordinates(self.window, 0, 0)
+        if point is None:
+            return False
+        _ok, origin_x, origin_y = self.window.get_window().get_origin()
+        left, top = point
+        return (left <= x - origin_x < left + widget.get_allocated_width() and
+                top <= y - origin_y < top + widget.get_allocated_height())
+
+    def draggable_background(self, event, x, y):
+        if event.get_button()[1] != 1:
+            return False
+        controls = (self.search, self.preview_button, self.history_scroll,
+                    self.pin_container, self.footer, self.preview_divider,
+                    self.preview_scroll, self.preview_close_button)
+        return not any(self.point_in_widget(widget, x, y) for widget in controls)
 
     def install_style(self):
         theme = self.settings.get("popup_theme")
@@ -1424,6 +1449,10 @@ class App:
                                         event.time)
             return True
         return False
+
+    def set_drag_cursor(self, widget):
+        widget.get_window().set_cursor(Gdk.Cursor.new_for_display(
+            widget.get_display(), Gdk.CursorType.FLEUR))
 
     def popup_monitor(self, display, fallback):
         if self.settings.get("popup_position") in ("screen_center", "last_position"):
